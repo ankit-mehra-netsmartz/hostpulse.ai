@@ -1,5 +1,15 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { 
   BarChart3, 
@@ -30,7 +40,86 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
+function DevLoginDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [email, setEmail] = useState("dev@localhost.com");
+  const [name, setName] = useState("Dev User");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/dev/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId: email, email, firstName: name }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.message || "Login failed");
+        return;
+      }
+      window.location.href = "/";
+    } catch {
+      setError("Network error. Is the server running?");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Dev Login</DialogTitle>
+          <DialogDescription>
+            Local development only — no real auth required.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+          <div className="space-y-1">
+            <Label htmlFor="dev-email">Email (used as user ID)</Label>
+            <Input
+              id="dev-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="dev-name">First name</Label>
+            <Input
+              id="dev-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? "Logging in…" : "Login"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function Landing() {
+  const isDev = import.meta.env.DEV;
+  const [devLoginOpen, setDevLoginOpen] = useState(false);
+
+  function handleLoginClick() {
+    if (isDev) {
+      setDevLoginOpen(true);
+    } else {
+      window.location.href = "/api/login";
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-background/80 border-b">
@@ -70,11 +159,11 @@ export default function Landing() {
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle />
-              <Button variant="outline" asChild data-testid="button-login">
-                <a href="/api/login">Login</a>
+              <Button variant="outline" onClick={handleLoginClick} data-testid="button-login">
+                Login
               </Button>
-              <Button asChild data-testid="button-create-account">
-                <a href="/api/login">Get Started</a>
+              <Button onClick={handleLoginClick} data-testid="button-create-account">
+                Get Started
               </Button>
             </div>
           </div>
@@ -102,8 +191,8 @@ export default function Landing() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-4">
-                  <Button size="lg" asChild data-testid="button-get-started">
-                    <a href="/api/login">Start Free</a>
+                  <Button size="lg" onClick={handleLoginClick} data-testid="button-get-started">
+                    Start Free
                   </Button>
                   <Button size="lg" variant="outline" data-testid="button-learn-more">
                     <a href="#ai-agents">See AI Agents</a>
@@ -623,8 +712,8 @@ export default function Landing() {
                         </li>
                       ))}
                     </ul>
-                    <Button size="lg" className="w-full" asChild data-testid="button-pricing-free">
-                      <a href="/api/login">Get Started Free</a>
+                    <Button size="lg" className="w-full" onClick={handleLoginClick} data-testid="button-pricing-free">
+                      Get Started Free
                     </Button>
                   </div>
                 </Card>
@@ -654,8 +743,8 @@ export default function Landing() {
                         </li>
                       ))}
                     </ul>
-                    <Button size="lg" variant="outline" className="w-full" asChild data-testid="button-pricing-pro">
-                      <a href="/api/login">Start Free, Add Properties Later</a>
+                    <Button size="lg" variant="outline" className="w-full" onClick={handleLoginClick} data-testid="button-pricing-pro">
+                      Start Free, Add Properties Later
                     </Button>
                   </div>
                 </Card>
@@ -692,8 +781,8 @@ export default function Landing() {
                 protect their reviews, and grow their revenue.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button size="lg" asChild data-testid="button-cta-get-started">
-                  <a href="/api/login">Get Started for Free</a>
+                <Button size="lg" onClick={handleLoginClick} data-testid="button-cta-get-started">
+                  Get Started for Free
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
@@ -703,6 +792,8 @@ export default function Landing() {
           </div>
         </section>
       </main>
+
+      {isDev && <DevLoginDialog open={devLoginOpen} onClose={() => setDevLoginOpen(false)} />}
 
       <footer className="border-t py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

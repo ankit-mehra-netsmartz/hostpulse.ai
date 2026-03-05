@@ -27,6 +27,7 @@ export function getSession() {
     ttl: sessionTtl,
     tableName: "sessions",
   });
+  const isProduction = process.env.NODE_ENV === "production";
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
@@ -34,7 +35,8 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: true,
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
       maxAge: sessionTtl,
     },
   });
@@ -66,6 +68,55 @@ export async function setupAuth(app: Express) {
   app.use(getSession());
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // If REPL_ID is not set we're running locally – skip Replit OIDC setup.
+  // Session + passport are already mounted above so local sessions still work.
+  if (!process.env.REPL_ID) {
+    console.log("[Auth] REPL_ID not set – skipping Replit OIDC setup (local dev mode)");
+
+    passport.serializeUser((user: Express.User, cb) => cb(null, user));
+    passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
+    // Dev-only login: POST /api/dev/login with { userId, email, firstName? }
+    // Creates a session for local development without Replit OIDC.
+    // Never exposed in production (REPL_ID must be absent).
+    app.post("/api/dev/login", async (req, res) => {
+      const { userId, email, firstName } = req.body || {};
+      if (!userId || !email) {
+        return res.status(400).json({ message: "userId and email are required" });
+      }
+      // Ensure user exists in the database
+      try {
+        await authStorage.upsertUser({ id: userId, email, firstName: firstName || email.split("@")[0] }, "email");
+      } catch (err) {
+        console.error("[Auth] Dev login – failed to upsert user:", err);
+        return res.status(500).json({ message: "Failed to create dev user" });
+      }
+      const devUser = {
+        claims: { sub: userId, email, first_name: firstName || email.split("@")[0] },
+      };
+      req.login(devUser, (err) => {
+        if (err) {
+          console.error("[Auth] Dev login error:", err);
+          return res.status(500).json({ message: "Login failed" });
+        }
+        res.json({ ok: true, user: devUser.claims });
+      });
+    });
+
+    app.get("/api/login", (_req, res) => {
+      res.status(501).json({ message: "Replit OIDC login not available in local dev mode. POST /api/dev/login instead." });
+    });
+    app.get("/api/callback", (_req, res) => {
+      res.status(501).json({ message: "Replit OIDC callback not available in local dev mode." });
+    });
+    app.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        res.redirect("/");
+      });
+    });
+    return;
+  }
 
   const config = await getOidcConfig();
 
@@ -158,7 +209,16 @@ export async function setupAuth(app: Express) {
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated() || !user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  // In local dev mode (no REPL_ID) there are no OIDC tokens – just trust the session.
+  if (!process.env.REPL_ID) {
+    return next();
+  }
+
+  if (!user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
