@@ -511,8 +511,15 @@ export default function ConnectDataSource() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    <Button variant="outline" asChild data-testid="button-go-to-properties">
-                      <a href="/properties">Manage Properties</a>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+                        setLocation("/properties");
+                      }}
+                      data-testid="button-go-to-properties"
+                    >
+                      Manage Properties
                     </Button>
                     <Button 
                       variant="ghost" 
