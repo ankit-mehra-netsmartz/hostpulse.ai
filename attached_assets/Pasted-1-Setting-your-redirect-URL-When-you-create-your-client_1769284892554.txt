@@ -1,0 +1,86 @@
+1. Setting your redirect URL
+When you create your client credentials in the Partner Portal, you will be able to configure the redirect URL, where we will send your customers after they have authorized the connection between your app and their Hospitable account.
+
+By default, this URL is used for both methods described above. If you wish to set a different URL for the one-click connection, let our team know and we can configure that for you.
+
+You also have the option to set a custom URL for the one-click connection. We will not pass the authorization code, which means the user will simply be brought to your site, and you will need to navigate them at some point to the Hospitable Authorization page, following the standard flow. The custom URL supports state so you can associate the request with the user.
+
+2. Setting up the OAuth flow
+a. Lead the user to authorize the connection
+This step is skipped if the customer initiates the connection from Hospitable's side using the One-click OAuth. Upon redirect to your page, we will pass the code which you can already use to request for the tokens in step by step.
+
+You will need to create a button or link within your app that redirects your user to the Hospitable Authorization page:
+
+https://auth.hospitable.com/oauth/authorize?client_id=<your vendor id>&response_type=code
+The response_type=code tells the authorization server that the application is initiating the authorization code flow which is an OAuth 2.0 grant type. Note: the code is a string, and not a placeholder to be replaced with any value.
+
+💡 Use the state parameter to associate an authorization request to a customer
+
+You can optionally add the ?state=<string> parameter to the authorization URL which, in addition to adding a layer of security, allows you to identify the source of the request, e.g. identify the customer that just completed the flow. The state value will passed back to you by adding it to your the redirect URL, which you can compare with the value you stored earlier.
+
+Learn more about it here.
+
+The Hospitable Authorization page will initially present them with a login page. (this will always be presented as long as they initiated from your page, even if they were already logged in to Hospitable in the same browser session). After providing their credentials, they will be asked to Authorize the connection with your app.
+
+b. Handle the redirect
+When the user clicks "Authorize" they'll be redirected to the URL that you configured in the Partner Portal. There will be an authorization code added as a parameter to the URL.
+
+https://not-hospitable.com/redirect?code=def2020087...
+This will also include the state if you had provide that earlier.
+
+The authorization code is valid for 10 minutes.
+
+c. Request for the access token
+Make a request to our OAuth2 server at https://auth.hospitable.com/oauth/token, providing your client credentials, "authorization_code" grant type and the provided code from the redirection.
+
+The request should look like this:
+
+curl --request POST \
+  --url https://auth.hospitable.com/oauth/token \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "client_id": "<your vendor id>", 
+  "client_secret": "<your vendor secret>", 
+  "grant_type": "authorization_code",
+  "code": "def5020087..."
+}'
+With a response of:
+
+{
+  "token_type": "Bearer",
+  "expires_in": 43200,
+  "access_token": "eyJ0eXA...",
+  "refresh_token": "def502005..."
+}
+Once you have the access_token, you can start making API requests on behalf of the user by including it in the Authorization header of each request:
+
+curl --request GET \
+  --url https://public.api.hospitable.com/properties \
+	--header 'Authorization: Bearer <token>'
+🚧 Token validity
+
+The access_token expires after 12 hours. You will need to request for new access tokens using the refresh_token.
+
+📘 Check your database columns!
+
+Tokens are quite large! Access tokens ~1,200 chars and Refresh tokens ~1,000 chars respectively. If your database columns aren't configured correctly, you might experience unexpected issues with accessing the API, or refreshing due to truncation.
+
+Refreshing your access tokens
+When the access token expires, you'll receive a 401 Unauthenticated error from your API requests. To resolve this, you'll need to refresh your access using the refresh_token that was also provided in the authorization response.
+
+The refresh request looks like this:
+
+curl --request POST \
+  --url https://auth.hospitable.com/oauth/token \
+  --header 'Content-Type: application/json' \
+  --data '{
+  "client_id": "<your vendor id>", 
+  "client_secret": "<your vendor secret>", 
+  "grant_type": "refresh_token",
+  "refresh_token": "<the refresh token>"
+}'
+This will provide a response identical step 3 when you first requested the tokens. The response will provide you with a new set of access_token and refresh_token.
+
+🚧 Refresh tokens expire!
+
+If your integration doesn't refresh Access Tokens immediately after expiry (which is common in some use cases where you may not need constant API access), you'll need to be careful - Refresh Tokens expire after 90 days. We recommend refreshing all tokens on a regular interval to ensure Hosts don't need to keep re-authorising your application.

@@ -1,0 +1,44 @@
+We will always send POST requests to your URL and expect a 200 response status code. Other responses or lack thereof will cause webhook re-tries.
+
+Payload fields
+When you receive a webhook from us, you can safely assume that each payload contains at least the following fields:
+
+Key	Type	Description	Example
+id	ULID (string)	A unique ordered ID assigned to the payload of the webhook.	01GTKD6ZYFVQMR0RWP4HBBHNZC
+data	object OR array of objects	JSON object relevant to the given action. Structure will be the same as making a GET request to a relevant endpoint.	
+action	string	The action that informs you the cause of this webhook	reservation.changed
+created	UTC Zulu ISO8601 String	When the payload was initially created	2023-10-01T09:35:24Z
+version	string	Version of the webhook	1.0
+Retries
+If your webhook handler does not respond with a 200 OK we will retry it up to 5 times or until successful response, with exponential back-off: 1 sec, 5 sec, 10 sec, 1 hr, 6 hr
+
+IP range
+Our webhooks will be sent from the following IP range 38.80.170.0/24. You are advised to whitelist only this IP for your webhook handler for better security.
+
+Signature
+We will include a Signature header in each webhook call. You can use this field to verify that Hospitable is the sender and the payload has not changed.
+
+To do this you need the following:
+
+Payload
+Webhook secret
+🤫 Obtaining your secret:
+
+If you are a Vendor then you can manage your webhooks and secrets from within your partner portal.
+
+If you are a host, your secret will be the primary user's email address encoded in base64.
+
+We sign the webhook using the standard HMAC with the SHA256 function.
+
+For example:
+
+Payload is {"foo": "bar"}
+Your webhook secret is "123456"
+The signature header cc99bf5947391ddb0d0d9866f5b9d3a68e8b273c5ac8f699b4ae2399a7433118
+You can now apply the HMAC to verify
+
+function verify(string $payload, string $signature): bool
+{
+  $expected = hash_hmac('sha256', $payload, env('SECRET', '123456'));
+  return hash_equals($expected, $signature);
+}

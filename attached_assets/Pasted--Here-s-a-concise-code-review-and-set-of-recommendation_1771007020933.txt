@@ -1,0 +1,194 @@
+
+Here’s a concise code review and set of recommendations based on the codebase.
+
+---
+
+# Code review: scalability, durability, and cleanup
+
+## 1. **Critical: split the monolithic `server/routes.ts` (~20.6k lines)**
+
+Almost all API routes live in a single file. That hurts:
+
+- **Scalability**: One file to load and parse; harder to reason about and deploy in pieces.
+- **Durability**: Merge conflicts and refactors are risky; onboarding and code review are harder.
+- **Testing**: Hard to unit-test small route groups.
+
+**Recommendation:** Move routes into domain modules and mount them with `express.Router()`, like you already do for Notion, Reports, and Nudge:
+
+- `server/routes/listings.ts` – listing CRUD, analyses, photos, sync, etc.
+- `server/routes/data-sources.ts` – data sources + OAuth (Hospitable, etc.).
+- `server/routes/reservations.ts` – reservations, chart data, inbox.
+- `server/routes/tags.ts`, `server/routes/themes.ts`, `server/routes/tasks.ts`, etc.
+- `server/routes/admin.ts` – admin prompts, users, procedure template.
+- `server/routes/lumi.ts` – Lumi HTTP + any Lumi-related routes.
+- `server/routes/webhooks.ts` – Hospitable (and any other) webhooks.
+
+In `routes.ts`, keep only:
+
+- `registerRoutes()` that:
+  - sets up auth,
+  - defines shared helpers (`getUserId`, `getWorkspaceId`, `validateWorkspaceMembership`),
+  - mounts the above routers (e.g. `app.use("/api", listingsRouter)`),
+  - calls `registerNotionRoutes`, `registerReportsRoutes`, `registerNudgeRoutes` as today.
+
+Pass those helpers (or a small “context” object) into each router so they don’t depend on closure over `registerRoutes`. That will also make it easier to add middleware (e.g. rate limiting, logging) per domain later.
+
+---
+
+## 2. **Workspace vs user scoping: make resource access consistent**
+
+You already validate workspace membership for list endpoints (e.g. `/api/listings`, `/api/data-sources`) and for Lumi. But **resource-by-id** routes often only check **user** ownership:
+
+- `GET /api/listings/:id` uses `listing.userId !== userId` and does **not** check workspace.
+- So a workspace member who didn’t create the listing gets 404 even if the listing is in the workspace.
+
+**Recommendation:** Decide one rule and apply it everywhere:
+
+- Either: “only the listing’s `userId` can access it” (current behavior for `/api/listings/:id`). Then document that and ensure list views only show listings the current user owns.
+- Or: “any active workspace member can access resources in that workspace.” Then for `/api/listings/:id` (and similar by-id routes), allow access if:
+  - `listing.userId === userId`, or  
+  - `listing.workspaceId` is set and the user is an active member of that workspace.
+
+Apply the same rule to data sources, reservations, tasks, etc., so by-id checks match list and workspace semantics. Centralizing “can access listing/data source/reservation” in a small helper (e.g. in `routes/helpers.ts`) will keep this consistent and testable.
+
+---
+
+## 3. **Centralize environment config and stop using `process.env` everywhere**
+
+`process.env` is used in many places (routes, services, auth, Lumi, ElevenLabs, Twilio, etc.) with no validation. That leads to:
+
+- Failures at runtime instead of at startup.
+- No single place to see what the app needs.
+- Harder production/deploy audits.
+
+**Recommendation:** Add a small config module (e.g. `server/config.ts`) that:
+
+- Reads `process.env` once.
+- Validates required keys (e.g. `DATABASE_URL`, `SESSION_SECRET`, `REPL_ID` for Replit auth).
+- Exports a typed object (and optionally uses Zod or similar for validation).
+- Other server code imports config from this module only.
+
+Use that for DB URL, session secret, Replit OIDC, OpenAI/OpenRouter, Hospitable, Notion, Twilio, Resend, etc. Then you can add defaults for development and fail fast in production when something is missing.
+
+---
+
+## 4. **Introduce versioned database migrations**
+
+You use `db:push` (Drizzle push) and no migration files. Push is convenient for early development but:
+
+- No history of schema changes.
+- Risky when multiple environments or branches have different schemas.
+- Hard to roll back or to run “data backfills” tied to a schema version.
+
+**Recommendation:** Move to Drizzle’s versioned migrations:
+
+- Use `drizzle-kit generate` to create migrations from schema changes.
+- Use `drizzle-kit migrate` (or a small migrate script) to apply them.
+- Store migrations in something like `server/migrations/` or `drizzle/` and run migrations on deploy.
+
+That will make the app more durable as you add users and change schema (e.g. for Listing Analysis, AI Agents, Cleaners/Tasking).
+
+---
+
+## 5. **Add API rate limiting**
+
+There is no application-level rate limiting. With more users and expensive operations (AI, external APIs, sync), you risk:
+
+- A single user or buggy client exhausting APIs or DB.
+- Harder to guarantee SLAs for others.
+
+**Recommendation:** Add a rate-limiting middleware (e.g. `express-rate-limit` or a store-backed one for multi-instance) for:
+
+- Public or unauthenticated endpoints (e.g. webhooks, login).
+- Expensive or AI endpoints (e.g. `/api/listings/:id/analyze`, Lumi, batch operations).
+
+Start with a simple per-IP or per-user limit; you can later tune by route and plan.
+
+---
+
+## 6. **Reduce duplication in `server/storage.ts` (~3.6k lines)**
+
+`storage.ts` implements a clear `IStorage` interface and one big `DatabaseStorage` class. That’s good for abstraction, but a single 3.6k-line class is hard to maintain and test.
+
+**Recommendation:** Keep the same `IStorage` interface and the same `storage` instance, but split the **implementation** into multiple classes that each own a domain, e.g.:
+
+- `ListingStorage` – listings, analyses, photo analyses.
+- `ReservationStorage` – reservations, tags.
+- `WorkspaceStorage` – workspaces, members.
+- `DataSourceStorage` – data sources.
+- etc.
+
+Then either:
+
+- Compose them in one `DatabaseStorage` that delegates to these (so existing `storage.getListing(...)` call sites stay the same), or  
+- Expose smaller facades (e.g. `listingStorage`, `reservationStorage`) and migrate call sites over time.
+
+That will make it easier to add features (e.g. Listing Analysis, Cleaners) without one giant file.
+
+---
+
+## 7. **Client: centralize API URLs and fix queryKey-as-URL**
+
+The default `queryFn` in `queryClient.ts` uses `queryKey.join("/")` as the request URL. So every `queryKey` must double as the URL path. That’s brittle (typos, wrong order, or extra segments break requests) and ties React Query keys to URL shape.
+
+**Recommendation:**
+
+- Add a small API layer (e.g. `client/src/lib/api.ts` or `api/endpoints.ts`) that exports constants or helpers for each endpoint, e.g.  
+  `listings.list()`, `listings.byId(id)`, `listings.reservations(id)`, etc., returning the path string (and optionally method/body for mutations).
+- Use those for both:
+  - `fetch`/`apiRequest` (e.g. `apiRequest("POST", api.listings.analyze(id), body)`),
+  - and for `queryKey` (e.g. `queryKey: [api.listings.byId(listingId)]` or a key builder that matches the URL).
+- Keep `queryKey` and URL in sync via this single source of truth so you don’t have to remember to pass `["/api/listings", id]` everywhere.
+
+---
+
+## 8. **Replit-specific auth: plan for non-Replit deployment**
+
+Auth is tied to Replit OIDC (`ISSUER_URL`, `REPL_ID`, callback URL). That’s fine while you’re on Replit; if you ever run the same app elsewhere (e.g. your own domain or another host), you’ll need a different strategy.
+
+**Recommendation:** Keep current auth as-is for now, but:
+
+- Isolate Replit-specific pieces (e.g. discovery URL, `REPL_ID`, callback base URL) behind a small auth config (from your central config) or a thin adapter.
+- So that later you can add another auth strategy (e.g. OIDC for a different IdP, or email/password) without touching every route.
+
+No need to change behavior yet; just avoid hardcoding Replit details deep in the auth code.
+
+---
+
+## 9. **Error handling and logging**
+
+- Global error handler in `server/index.ts` correctly catches and returns JSON with status/message.
+- Many route handlers use `try/catch` and `res.status(500).json({ message: "..." })`, which is good.
+- There is a lot of `console.log`/`console.error` (e.g. in routes, Lumi, auth). In production, that can leak structure (and sometimes data) and makes it hard to search and alert.
+
+**Recommendation:**
+
+- Introduce a small logger (e.g. `server/lib/logger.ts`) that in production logs structured JSON (with levels, request id, and no sensitive fields) and in development can be more readable.
+- Replace ad-hoc `console.log`/`console.error` in server code with the logger, and avoid logging full request/response bodies or tokens.
+- Optionally add a request-id middleware and include it in logs and in responses (e.g. header) for support and debugging.
+
+---
+
+## 10. **Security and sensitive data**
+
+- Session secret and DB URL are required at runtime; centralizing config (see §3) will make it easier to ensure they’re never logged or exposed.
+- Webhook handlers validate signatures (e.g. Hospitable); keep that pattern for any new webhooks.
+- Listing-by-id and similar routes correctly enforce “user or workspace” and don’t expose other tenants’ data once you fix workspace vs user consistency (§2).
+
+**Recommendation:** In your config or startup, ensure `SESSION_SECRET` (and any signing secrets) are strong and not defaulted in production. Add a quick audit that no route sends `accessToken`, `refreshToken`, or raw passwords in JSON responses (you already avoid that for data sources; keep that discipline as you add routes).
+
+---
+
+## Summary: what to do first
+
+| Priority | Action |
+|----------|--------|
+| **High** | Split `server/routes.ts` into domain routers and mount them in `registerRoutes`. |
+| **High** | Unify resource access: either enforce workspace membership for by-id routes (listings, etc.) or document “owner-only” and align list/detail behavior. |
+| **High** | Centralize env in `server/config.ts` with validation and use it everywhere instead of raw `process.env`. |
+| **Medium** | Add Drizzle versioned migrations and run them on deploy. |
+| **Medium** | Add rate limiting for auth, webhooks, and expensive/AI endpoints. |
+| **Medium** | Split `DatabaseStorage` into domain-specific classes behind the same `IStorage` (or facades). |
+| **Lower** | Client API layer for URLs and query keys; structured logging and request IDs. |
+
+If you tell me which area you want to tackle first (e.g. “split routes” or “config + migrations”), I can outline concrete steps and code changes file-by-file next.

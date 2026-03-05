@@ -1,0 +1,170 @@
+post
+Message Updated
+This webhook will be sent when a message is updated in Hospitable.
+
+Request
+Body
+
+application/json
+
+application/json
+id
+string<uuid>
+data
+Message
+platform
+string
+Example:
+airbnb
+platform_id
+integer
+Default:
+0
+Example:
+1130024
+conversation_id
+string
+Example:
+becd1474-ccd1-40bf-9ce8-04456bfa338d
+reservation_id
+stringnull
+
+any of: string
+content_type
+string
+Example:
+text/plain
+body
+string
+Example:
+Hello, there.
+attachments
+array[object]
+type
+any
+Allowed value:
+image
+url
+string
+Default:
+The image location URL
+sender_type
+string
+Allowed values:
+host
+guest
+Example:
+host|guest
+sender_role
+string
+deprecated
+Example:
+host|null
+sender
+sender
+first_name
+string
+Example:
+Jane
+full_name
+string
+Example:
+Jane Doe
+locale
+string
+Example:
+en
+picture_url
+string
+Example:
+https://a0.muscache.com/im/pictures/user/f391da23-c76e-4728-a9f2-25cc139a13cc.jpg?aki_policy=profile_x_medium
+thumbnail_url
+string
+Example:
+https://a0.muscache.com/im/pictures/user/f391da23-c76e-4728-a9f2-25cc139a13cc.jpg?aki_policy=profile_x_medium
+location
+any
+user
+object
+id
+string<uuid>
+email
+string<email>
+name
+string
+created_at
+string
+Example:
+2019-07-29T19:01:14Z
+source
+string
+The source of the message:Show all...
+
+Allowed values:
+public_api
+platform
+AI
+automated
+hospitable
+integration
+string or null
+Personal Access Token only!Show all...
+
+sent_reference_id
+string or null
+The message identifier provided if the message was sent using on of the Send Message endpoints.
+
+reactions
+array[object]
+emoji
+string
+sender_type
+string
+Allowed values:
+host
+guest
+sender
+sender
+first_name
+string
+Example:
+Jane
+full_name
+string
+Example:
+Jane Doe
+locale
+string
+Example:
+en
+picture_url
+string
+Example:
+https://a0.muscache.com/im/pictures/user/f391da23-c76e-4728-a9f2-25cc139a13cc.jpg?aki_policy=profile_x_medium
+thumbnail_url
+string
+Example:
+https://a0.muscache.com/im/pictures/user/f391da23-c76e-4728-a9f2-25cc139a13cc.jpg?aki_policy=profile_x_medium
+location
+any
+reacted_at
+string<date-time>
+action
+any
+Allowed value:
+message.updated
+triggers
+array
+Allowed value:
+reaction_added
+created
+string<date-time>
+Example:
+2024-10-08T07:03:34Z
+version
+string
+Example:
+v2
+Responses
+200
+Return a 200 status to indicate that the data was received successfully

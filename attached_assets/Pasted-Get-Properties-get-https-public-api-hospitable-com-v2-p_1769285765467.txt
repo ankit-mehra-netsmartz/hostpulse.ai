@@ -1,0 +1,357 @@
+Get Properties
+get
+https://public.api.hospitable.com/v2/properties
+📘 Available includes:
+
+user
+listings (required: listing:read scope)
+details
+bookings
+Request
+Enter the token with the Bearer prefix, e.g. Bearer abcde12345
+
+Provide your bearer token in the Authorization header when making requests to protected resources.
+
+Example: Authorization: Bearer 123
+
+Query Parameters
+include
+any
+What relationships of the property should be included in the response.
+
+Allowed value:
+listings
+page
+integer<int32>
+The page of results to return.
+
+Default:
+1
+per_page
+integer<int32>
+The number of results to include per page.
+
+<= 100
+Default:
+10
+Headers
+Content-Type
+string
+Default:
+application/json
+Responses
+200
+400
+404
+500
+200
+
+Body
+
+application/json
+
+application/json
+responses
+/
+200
+/
+meta
+.
+total
+data
+array[PropertyFull]
+id
+string
+required
+Example:
+550e8400-e29b-41d4-a716-446655440000
+name
+string
+required
+Example:
+Relaxing Villa near the sea
+public_name
+string
+required
+Example:
+Relaxing Villa near the sea
+picture
+string
+required
+Example:
+https://cdn2.thecatapi.com/images/d9m.jpg
+address
+object
+required
+timezone
+string
+required
+Example:
++0200
+listed
+boolean
+required
+Default:
+true
+Example:
+true
+amenities
+array[string]
+required
+description
+string
+required
+Example:
+Example Description
+summary
+string
+required
+Example:
+Example Summary
+check-in
+string
+required
+The default checkin time for the property.
+
+Example:
+12:30
+check-out
+string
+required
+The default checkout time for the property.
+
+Example:
+12:30
+currency
+string
+required
+Example:
+EUR
+capacity
+object
+required
+max
+integer or null
+Default:
+0
+Example:
+2
+bedrooms
+integer or null
+Default:
+0
+Example:
+1
+beds
+number or null
+Default:
+0
+Example:
+1
+bathrooms
+number or null
+Default:
+0
+Example:
+1.5
+room_details
+array[object]
+required
+type
+string
+required
+Example:
+bedroom
+beds
+array[object]
+required
+house_rules
+object
+required
+pets_allowed
+boolean
+required
+Default:
+true
+Example:
+true
+smoking_allowed
+boolean
+required
+Default:
+true
+Example:
+false
+events_allowed
+any
+required
+listings
+array[object]
+required
+platform
+string
+required
+Example:
+airbnb
+platform_id
+string
+required
+The listing id from the booking platform.
+
+Example:
+24488
+platform_user_id
+string
+required
+The id of the user the listing belongs to.
+
+co_hosts
+array[object]
+required
+Co-hosts with messaging permission for this Airbnb listing.
+
+platform_name
+string
+The name of the user for this listing.
+
+platform_email
+string
+pat:read scope only
+
+ical_imports
+array[object]
+iCal import feeds for this property. Only included when 'listings' is included.
+
+tags
+array[string]
+required
+property_type
+string
+required
+room_type
+string
+required
+calendar_restricted
+boolean
+required
+If a property is calendar_restricted its calendar will not be able to be updated using the Update Property Calendar endpoint
+
+parent_child
+object or null
+If the property is in a Parent/Child setup then this will contain all the information about that relationship.
+
+type
+string
+If this property is the parent or child in the relationship.
+
+Allowed values:
+parent
+child
+parent
+string or null
+If this property is a child, this is the parent property id.
+
+Example:
+550e8400-e29b-41d4-a716-446655440000
+children
+array[string<uuid>]
+If this property is a parent, this is any child property ids
+
+siblings
+array[string<uuid>]
+If this property is a child, this is any sibling property ids. These are other child properties of this properties parent.
+
+bookings
+Property_bookings
+Example:
+{"booking_policies":{"cancellation":["100% refund 24 hours after booking accepted, if booking is requested at least 24 hours before check-in"],"payment_terms":{"status":"manual","description":["20% due at booking","30% due 45 days before check-in","50% due 10 days before check-in"],"grace_period":"48 hours"}},"listing_markups":[{"platform":"booking","type":"percent","value":15}],"security_deposits":[{"name":"base","type":"fixed","value":{"amount":12345,"formatted":"$123.45"}},{"name":"direct","type":"fixed","value":{"amount":12345,"formatted":"$123.45"}}],"occupancy_based_rules":{"guests_included":1,"extra_guest_fee":{"type":"fixed","value":{"amount":12345,"formatted":"$123.45"}},"pet_fee":{"type":"fixed","value":{"amount":12345,"formatted":"$123.45"}}},"fees":[{"name":"cleaning_fee","type":"fixed","value":{"amount":12345,"formatted":"$123.45"}},{"name":"managment_fee","type":"percent","value":10}],"discounts":[{"name":"weekly","type":"percent","value":10},{"name":"monthly","type":"percent","value":10}],"site_urls":["https://yoursite.hospitable.rentals/property/your-property"]}
+booking_policies
+object
+required
+listing_markups
+array[object]
+required
+security_deposits
+array[object]
+required
+occupancy_based_rules
+object
+required
+fees
+array (anyOf) [objects]array (anyOf) [objects]
+
+array (anyOf) [objects]
+discounts
+array[object]
+Discounts that could be applied to a booking
+
+site_urls
+array[string]
+required
+A list of direct booking site urls the property is included on.
+
+details
+Property_details
+user
+user
+links
+object
+first
+string
+Example:
+https://public.api.hospitable.com/v2/properties?page=1
+last
+string
+Example:
+https://public.api.hospitable.com/v2/properties?page=2
+prev
+any
+next
+string
+Example:
+https://public.api.hospitable.com/v2/properties?page=2
+meta
+object
+current_page
+integer
+Default:
+0
+Example:
+1
+from
+integer
+Default:
+0
+Example:
+1
+last_page
+integer
+Default:
+0
+Example:
+2
+links
+array[object]
+path
+string
+Example:
+https://public.api.hospitable.com/v2/properties
+per_page
+integer
+<= 100
+Default:
+10
+Example:
+10
+to
+integer
+Default:
+0
+Example:
+10
+total
+integer
+Default:
+0
+Example:
+15

@@ -1,0 +1,168 @@
+post
+Property
+📘 Includes:
+
+listings (required: listing:read scope)
+details
+bookings
+NOTE: Includes are added automatically based on the scopes that are enabled for your integration
+
+This property webhook will be sent whenever a property is created or updated, this includes when its contained listings change as a result of a merge
+
+Request
+Body
+
+application/json
+
+application/json
+id
+string<uuid>
+data
+PropertyFull
+Example:
+{"id":"550e8400-e29b-41d4-a716-446655440000","name":"Relaxing Villa near the sea","public_name":"Relaxing Villa near the sea","picture":"https://cdn2.thecatapi.com/images/d9m.jpg","address":{"number":"32","street":"Senefelderplatz","city":"Berlin","state":"string","country":"DE","postcode":"10405","coordinates":{"latitude":50.8514786,"longitude":4.364562},"display":"37a Senefelderplatz, 10405 Berlin, DE"},"timezone":"+0200","listed":true,"amenities":["shower"],"description":"Example Description","summary":"Example Summary","check-in":"12:30","check-out":"12:30","currency":"EUR","capacity":{"max":2,"bedrooms":1,"beds":1,"bathrooms":1.5},"room_details":[{"type":"king_size","quantity":1}],"house_rules":{"pets_allowed":true,"smoking_allowed":false,"events_allowed":null},"listings":[{"platform":"airbnb","platform_id":"24488","platform_user_id":"string","co_hosts":[{"user_id":"12345","channel_name":"Co-hosted channel"}],"platform_name":"string","platform_email":"string"}],"ical_imports":[{"uuid":"550e8400-e29b-41d4-a716-446655440000","url":"https://example.com/calendar.ics","name":"Vacation Rental Calendar","host":{"first_name":"John","last_name":"Doe"},"last_sync_at":"2019-01-01T12:00:00Z","disconnected_at":"2019-01-01T12:00:00Z"}],"tags":["Tag"],"property_type":"string","room_type":"string","calendar_restricted":true,"parent_child":{"type":"parent","parent":"550e8400-e29b-41d4-a716-446655440000","children":["550e8400-e29b-41d4-a716-446655440000"],"siblings":["550e8400-e29b-41d4-a716-446655440000"]}}
+id
+string
+required
+Example:
+550e8400-e29b-41d4-a716-446655440000
+name
+string
+required
+Example:
+Relaxing Villa near the sea
+public_name
+string
+required
+Example:
+Relaxing Villa near the sea
+picture
+string
+required
+Example:
+https://cdn2.thecatapi.com/images/d9m.jpg
+address
+object
+required
+timezone
+string
+required
+Example:
++0200
+listed
+boolean
+required
+Default:
+true
+Example:
+true
+amenities
+array[string]
+required
+description
+string
+required
+Example:
+Example Description
+summary
+string
+required
+Example:
+Example Summary
+check-in
+string
+required
+The default checkin time for the property.
+
+Example:
+12:30
+check-out
+string
+required
+The default checkout time for the property.
+
+Example:
+12:30
+currency
+string
+required
+Example:
+EUR
+capacity
+object
+required
+room_details
+array[object]
+required
+house_rules
+object
+required
+listings
+array[object]
+required
+ical_imports
+array[object]
+iCal import feeds for this property. Only included when 'listings' is included.
+
+tags
+array[string]
+required
+property_type
+string
+required
+room_type
+string
+required
+calendar_restricted
+boolean
+required
+If a property is calendar_restricted its calendar will not be able to be updated using the Update Property Calendar endpoint
+
+parent_child
+object or null
+If the property is in a Parent/Child setup then this will contain all the information about that relationship.
+
+bookings
+Property_bookings
+Example:
+{"booking_policies":{"cancellation":["100% refund 24 hours after booking accepted, if booking is requested at least 24 hours before check-in"],"payment_terms":{"status":"manual","description":["20% due at booking","30% due 45 days before check-in","50% due 10 days before check-in"],"grace_period":"48 hours"}},"listing_markups":[{"platform":"booking","type":"percent","value":15}],"security_deposits":[{"name":"base","type":"fixed","value":{"amount":12345,"formatted":"$123.45"}},{"name":"direct","type":"fixed","value":{"amount":12345,"formatted":"$123.45"}}],"occupancy_based_rules":{"guests_included":1,"extra_guest_fee":{"type":"fixed","value":{"amount":12345,"formatted":"$123.45"}},"pet_fee":{"type":"fixed","value":{"amount":12345,"formatted":"$123.45"}}},"fees":[{"name":"cleaning_fee","type":"fixed","value":{"amount":12345,"formatted":"$123.45"}},{"name":"managment_fee","type":"percent","value":10}],"discounts":[{"name":"weekly","type":"percent","value":10},{"name":"monthly","type":"percent","value":10}],"site_urls":["https://yoursite.hospitable.rentals/property/your-property"]}
+details
+Property_details
+user
+user
+action
+string
+Allowed values:
+property.created
+property.changed
+triggers
+array[string]
+Allowed values:
+name
+picture
+address
+amenities
+description
+summary
+checkin_checkout
+currency
+capacity
+house_rules
+listings
+property_type
+room_type
+calendar_restricted
+details
+parent_child
+test
+created
+string<date-time>
+Example:
+2024-10-08T07:03:34Z
+version
+string
+Example:
+v2
+Responses
+200
+Return a 200 status to indicate that the data was received successfully

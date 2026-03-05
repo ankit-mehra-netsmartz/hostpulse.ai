@@ -1,0 +1,125 @@
+Webhook triggers
+A webhook is sent whenever these events occur:
+
+ 
+
+Reservations
+ 
+
+Reservation creation 
+These webhooks will have an action of reservation.created and will be sent when a new reservation is created.
+
+ 
+
+Reservation changed 
+These webhooks will have an action of reservation.changed and will be sent when any of the following occur:
+
+Status changes:
+
+Checkpoint
+
+Pending
+
+Accepted
+
+Not accepted
+
+Cancelled
+
+Changed to another listing
+
+Changes to the check-in or check-out date
+
+Changes to the check-in or check-out time
+
+Changes to the number of guests
+
+Changes to the number of night
+
+Changes to the financials
+
+Guest issue is detected
+
+ 
+
+Properties
+ 
+
+Property creation 
+These webhooks will have an action of property.created and will be sent when a new property is created.
+​
+
+Property changed 
+These webhooks will have an action of property.changed and will be sent when any of the following occur:
+
+Property details change
+
+Property listings change
+
+A property becomes calendar restricted
+
+A properties Parent/Child relationship changes
+
+ 
+
+Property deleted 
+These webhooks will have an action of property.deleted and will be sent when a property is deleted, this can happen when a channel is disconnected and a property no longer has any listings.
+​
+This will not be sent when a property is deleted as a result of a merge, as that is handled by the property.merged webhooks
+
+ 
+
+Property merged 
+These webhooks will have an action of property.merged  and will be sent when a property is merged with another. 
+
+ 
+
+ 
+
+Message created
+These webhooks will have an action of message.created and will be sent when a message is sent either by the guest or the host. 
+
+We will not send messages older than 12 hours. To retrieve historic messages when a new channel is connected, please use the messages API.
+
+ 
+
+ 
+
+Review creation
+These webhooks will have an action of review.created and will be sent when a new review is received. Currently, we source review data from Airbnb and our own direct bookings.
+
+ 
+
+ 
+
+Retries
+We will always send POST requests to this URL and expect a 200 OK response status code from your webhook handler. Other responses or lack thereof will cause webhook re-tries. We will retry it up to 5 times or until successful response, with exponential back-off: 1 sec, 5 sec, 10 sec, 1 hr, 6 hr.
+
+ 
+
+ 
+
+IP Range
+The webhooks are sent from IP addresses within the 38.80.170.0/24 range. This means you can expect requests from addresses between  38.80.170.0 and 38.80.170.24..
+
+ 
+
+You are advised to whitelist only this IP for your webhook handler for better security.
+
+ 
+
+ 
+
+Historic webhooks
+It is not possible to resend webhooks generated in a specific period of time. You can only have all webhooks resent by clicking on the 3 dots icon and selecting Send historic webhooks. Only reservations with 'Accepted' as the last status are sent.
+
+  
+
+ 
+
+Webhook data
+All webhooks are sent as JSON  with the request having a Content-Type of application/json
+
+ 
+
+To see a list of data fields and possible values in a webhook along with an example payload, visit our technical documentation.
