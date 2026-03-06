@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, X } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 interface ImpersonationStatus {
   isImpersonating: boolean;
@@ -16,10 +18,23 @@ interface ImpersonationStatus {
 
 export function ImpersonationBanner() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "app_admin";
+  const isImpersonating = Boolean(user?.isImpersonating);
+  const shouldCheckImpersonation = isAdmin || isImpersonating;
+  // Add small jitter so many clients don't refetch at the exact same instant.
+  const pollJitterMs = useMemo(() => Math.floor(Math.random() * 5000), []);
+  const refetchInterval = !shouldCheckImpersonation
+    ? false
+    : isImpersonating
+      ? 10000 + Math.min(pollJitterMs, 1000)
+      : 60000 + pollJitterMs;
 
   const { data: status } = useQuery<ImpersonationStatus>({
     queryKey: ["/api/admin/impersonation-status"],
-    refetchInterval: 5000,
+    enabled: shouldCheckImpersonation,
+    refetchInterval,
+    refetchIntervalInBackground: false,
   });
 
   const stopImpersonationMutation = useMutation({
@@ -28,7 +43,9 @@ export function ImpersonationBanner() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/impersonation-status"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/impersonation-status"],
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       toast({
         title: "Impersonation Ended",
@@ -49,13 +66,14 @@ export function ImpersonationBanner() {
     return null;
   }
 
-  const userName = status.impersonatedUser?.firstName && status.impersonatedUser?.lastName
-    ? `${status.impersonatedUser.firstName} ${status.impersonatedUser.lastName}`
-    : status.impersonatedUser?.email || "Unknown User";
+  const userName =
+    status.impersonatedUser?.firstName && status.impersonatedUser?.lastName
+      ? `${status.impersonatedUser.firstName} ${status.impersonatedUser.lastName}`
+      : status.impersonatedUser?.email || "Unknown User";
 
   return (
     <>
-      <div 
+      <div
         className="fixed top-0 left-0 right-0 z-[100] bg-amber-500 text-amber-950 py-2 px-4 flex items-center justify-center gap-4 h-10"
         data-testid="impersonation-banner"
       >

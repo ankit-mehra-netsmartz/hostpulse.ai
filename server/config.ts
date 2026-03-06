@@ -23,13 +23,10 @@ export const config = {
     secret: process.env.SESSION_SECRET || "",
   },
 
-  replit: {
-    issuerUrl: process.env.ISSUER_URL,
-    replId: process.env.REPL_ID,
-    devDomain: process.env.REPLIT_DEV_DOMAIN,
-    connectorsHostname: process.env.REPLIT_CONNECTORS_HOSTNAME,
-    replIdentity: process.env.REPL_IDENTITY,
-    webReplRenewal: process.env.WEB_REPL_RENEWAL,
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackUrl: process.env.GOOGLE_CALLBACK_URL,
   },
 
   openai: {
