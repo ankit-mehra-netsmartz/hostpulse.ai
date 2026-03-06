@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { logger } from "../logger";
 
 export const getUserId = (req: Request): string => {
-  return (req as any).user?.claims?.sub;
+  return (req as any).user?.id;
 };
 
 export const getWorkspaceId = (req: Request): string | null => {

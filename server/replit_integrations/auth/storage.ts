@@ -11,19 +11,14 @@ export interface IAuthStorage {
 
 // Helper to detect account type from claims or email
 function detectAccountType(claims: any): AccountType {
-  // Check if there's an issuer hint
   const iss = claims?.iss || "";
   const email = claims?.email || "";
-  
-  // Replit Auth uses Google/GitHub for social login, detect from email domain or claims
-  if (email.endsWith("@gmail.com") || iss.includes("google")) {
+
+  if (iss.includes("google") || email.endsWith("@gmail.com")) {
     return ACCOUNT_TYPES.GOOGLE;
   }
   if (iss.includes("github") || claims?.login) {
     return ACCOUNT_TYPES.GITHUB;
-  }
-  if (iss.includes("replit")) {
-    return ACCOUNT_TYPES.REPLIT;
   }
   if (email) {
     return ACCOUNT_TYPES.EMAIL;
