@@ -1,15 +1,5 @@
-import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { 
   BarChart3, 
@@ -40,84 +30,9 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
-function DevLoginDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [email, setEmail] = useState("dev@localhost.com");
-  const [name, setName] = useState("Dev User");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      const res = await fetch("/api/dev/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ userId: email, email, firstName: name }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.message || "Login failed");
-        return;
-      }
-      window.location.href = "/";
-    } catch {
-      setError("Network error. Is the server running?");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>Dev Login</DialogTitle>
-          <DialogDescription>
-            Local development only — no real auth required.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          <div className="space-y-1">
-            <Label htmlFor="dev-email">Email (used as user ID)</Label>
-            <Input
-              id="dev-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="dev-name">First name</Label>
-            <Input
-              id="dev-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Logging in…" : "Login"}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export default function Landing() {
-  const isDev = import.meta.env.DEV;
-  const [devLoginOpen, setDevLoginOpen] = useState(false);
-
   function handleLoginClick() {
-    if (isDev) {
-      setDevLoginOpen(true);
-    } else {
-      window.location.href = "/api/login";
-    }
+    window.location.href = "/auth/google";
   }
 
   return (
@@ -159,11 +74,8 @@ export default function Landing() {
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle />
-              <Button variant="outline" onClick={handleLoginClick} data-testid="button-login">
-                Login
-              </Button>
-              <Button onClick={handleLoginClick} data-testid="button-create-account">
-                Get Started
+              <Button onClick={handleLoginClick} data-testid="button-login">
+                Sign in with Google
               </Button>
             </div>
           </div>
@@ -792,8 +704,6 @@ export default function Landing() {
           </div>
         </section>
       </main>
-
-      {isDev && <DevLoginDialog open={devLoginOpen} onClose={() => setDevLoginOpen(false)} />}
 
       <footer className="border-t py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
