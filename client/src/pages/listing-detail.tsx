@@ -2334,8 +2334,20 @@ export default function ListingDetailPage() {
                         const Icon = cat.icon;
                         const isAnalyzed = grade || catAnalysis;
                         
-                        // Count items analyzed (suggestions count as items)
-                        const itemsCount = catAnalysis?.suggestions?.length || 0;
+                        // Count items analyzed - category-specific logic
+                        const itemsCount = (() => {
+                          if (cat.key === "reviews") {
+                            return (analysis as any)?.reviewCount || catAnalysis?.suggestions?.length || 0;
+                          }
+                          if (cat.key === "photos") {
+                            return (analysis as any)?.photoAnalysisTotalPhotos || catAnalysis?.suggestions?.length || 0;
+                          }
+                          if (cat.key === "sleep" && catAnalysis) {
+                            return (catAnalysis as any)?.roomCount || catAnalysis?.suggestions?.length || (isAnalyzed ? 1 : 0);
+                          }
+                          // For all other categories: prefer suggestions count, but show at least 1 if grade exists (grade present means analysis was run even if JSONB data is legacy/null)
+                          return catAnalysis?.suggestions?.length || (isAnalyzed ? 1 : 0);
+                        })();
                         
                         // Determine if this category is in Phase 2 and currently being analyzed
                         const isPhotoCategory = cat.key === "photos";
