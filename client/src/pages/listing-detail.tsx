@@ -370,10 +370,11 @@ export default function ListingDetailPage() {
     refetchInterval: isAnalyzingPhotos ? 2000 : false,
   });
 
-  // Airbnb scan data query
+  // Airbnb scan data query — poll every 5s while scanning
   const { data: airbnbScan } = useQuery<AirbnbScan>({
     queryKey: ["/api/listings", listingId, "airbnb-scan"],
     enabled: !!listingId,
+    refetchInterval: (query) => query.state.data?.status === "scanning" ? 5000 : false,
   });
 
   // Single-category re-run (maps UI key to API category name)
@@ -389,11 +390,7 @@ export default function ListingDetailPage() {
   };
   const analyzeCategoryMutation = useMutation({
     mutationFn: async (apiCategory: string) => {
-      const res = await apiRequest("POST", `/api/listings/${listingId}/analyze-category`, { body: JSON.stringify({ category: apiCategory }) });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.message || "Failed to run category analysis");
-      }
+      const res = await apiRequest("POST", `/api/listings/${listingId}/analyze-category`, { category: apiCategory });
       return res.json();
     },
     onSuccess: (_data, apiCategory) => {
@@ -401,7 +398,28 @@ export default function ListingDetailPage() {
       toast({ title: "Category updated", description: `Re-ran analysis for ${apiCategory.replace(/_/g, " ")}.` });
     },
     onError: (err: Error) => {
-      toast({ title: "Could not re-run category", description: err.message, variant: "destructive" });
+      // apiRequest throws "STATUS: bodyText" — extract just the message from JSON body if present
+      let description = err.message;
+      const match = err.message.match(/^\d+:\s*(\{[\s\S]*\})$/);
+      if (match) {
+        try { description = JSON.parse(match[1])?.message || description; } catch {}
+      }
+      toast({ title: "Could not re-run category", description, variant: "destructive" });
+    },
+  });
+
+  // Re-trigger Airbnb scan (e.g. after a failed scan)
+  const rescanAirbnbMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/listings/${listingId}/airbnb-scan`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", listingId, "airbnb-scan"] });
+      toast({ title: "Airbnb scan started", description: "Re-scanning your Airbnb listing. This may take a minute." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Scan failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1745,14 +1763,26 @@ export default function ListingDetailPage() {
                     </Badge>
                   )}
                   {airbnbScan?.status === "failed" && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge variant="outline" className="text-[10px] text-red-500 border-red-500/30 cursor-help">Scan Failed</Badge>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-sm">
-                        {airbnbScan.errorMessage || "The Airbnb listing crawl failed. Check server logs for details."}
-                      </TooltipContent>
-                    </Tooltip>
+                    <div className="flex items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="outline" className="text-[10px] text-red-500 border-red-500/30 cursor-help">Scan Failed</Badge>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-sm">
+                          {airbnbScan.errorMessage || "The Airbnb listing crawl failed. Check server logs for details."}
+                        </TooltipContent>
+                      </Tooltip>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1.5 text-[10px] text-red-400 hover:text-red-300"
+                        onClick={() => rescanAirbnbMutation.mutate()}
+                        disabled={rescanAirbnbMutation.isPending}
+                      >
+                        {rescanAirbnbMutation.isPending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <RefreshCw className="w-2.5 h-2.5" />}
+                        <span className="ml-1">Re-scan</span>
+                      </Button>
+                    </div>
                   )}
                   <div className="flex-1 border-t" />
                 </div>
@@ -4353,7 +4383,9 @@ export default function ListingDetailPage() {
                               size="sm"
                               onClick={() => {
                                 const apiCat = categoryToApiName[selectedCategory];
-                                if (apiCat) {
+                                if (selectedCategory === "sleep" || selectedCategory === "superhost") {
+                                  toast({ title: "Use full analysis", description: "Where You'll Sleep and Host Profile require a full analysis to refresh (they need a fresh Airbnb scan)." });
+                                } else if (apiCat) {
                                   analyzeCategoryMutation.mutate(apiCat);
                                 } else if (selectedCategory === "ideal" || selectedCategory === "photos") {
                                   toast({ title: "Use full analysis", description: "Re-run the full analysis to refresh this category." });
