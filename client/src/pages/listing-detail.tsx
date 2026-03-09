@@ -38,7 +38,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useNotifications } from "@/contexts/notifications-context";
-import type { Reservation, Tag, ConversationMessage, ListingAnalysis } from "@shared/schema";
+import type { Reservation, Tag, ConversationMessage } from "@shared/schema";
 
 const GRADE_TO_NUMERIC: Record<string, number> = { A: 10, B: 8, C: 6, D: 4, F: 2 };
 const DEFAULT_CATEGORY_WEIGHTS: Record<string, number> = {
@@ -2480,6 +2480,42 @@ export default function ListingDetailPage() {
                   const images = listing?.images as string[] || [];
                   const photos = images.length > 0 ? images : (listing?.imageUrl ? [listing.imageUrl] : []);
 
+                  const renderPhotoPreviewLink = (photoIndex: number, label?: string) => {
+                    const photoUrl = photos[photoIndex];
+                    if (!photoUrl) return <span className="font-semibold">Photo {photoIndex + 1}</span>;
+                    return (
+                      <HoverCard openDelay={200} closeDelay={100}>
+                        <HoverCardTrigger asChild>
+                          <span
+                            className="inline-flex items-center gap-1 cursor-pointer text-[10px]"
+                            onClick={() => {
+                              setSelectedPhotoIndex(photoIndex);
+                              setShowPhotoAnalysis(true);
+                            }}
+                            data-testid={`photo-preview-link-${photoIndex}`}
+                          >
+                            <img
+                              src={photoUrl}
+                              alt={`Photo ${photoIndex + 1}`}
+                              className="w-5 h-5 rounded object-cover border border-blue-500/40 inline-block"
+                            />
+                            <span className="underline decoration-dotted underline-offset-2 font-semibold hover:text-blue-300 transition-colors">
+                              {label || `Photo ${photoIndex + 1}`}
+                            </span>
+                          </span>
+                        </HoverCardTrigger>
+                        <HoverCardContent side="top" className="w-52 p-1.5" align="start">
+                          <img
+                            src={photoUrl}
+                            alt={`Photo ${photoIndex + 1}`}
+                            className="w-full rounded object-cover aspect-[4/3]"
+                          />
+                          <p className="text-[10px] text-muted-foreground text-center mt-1">Photo {photoIndex + 1}</p>
+                        </HoverCardContent>
+                      </HoverCard>
+                    );
+                  };
+
                   if (selectedCategory === "photos") {
                     return (
                       <Card className="border-purple-500/30">
@@ -2879,42 +2915,6 @@ export default function ListingDetailPage() {
                               );
                             };
 
-                            const renderPhotoPreviewLink = (photoIndex: number, label?: string) => {
-                              const photoUrl = photos[photoIndex];
-                              if (!photoUrl) return <span className="font-semibold">Photo {photoIndex + 1}</span>;
-                              return (
-                                <HoverCard openDelay={200} closeDelay={100}>
-                                  <HoverCardTrigger asChild>
-                                    <span
-                                      className="inline-flex items-center gap-1 cursor-pointer text-[10px]"
-                                      onClick={() => {
-                                        setSelectedPhotoIndex(photoIndex);
-                                        setShowPhotoAnalysis(true);
-                                      }}
-                                      data-testid={`photo-preview-link-${photoIndex}`}
-                                    >
-                                      <img
-                                        src={photoUrl}
-                                        alt={`Photo ${photoIndex + 1}`}
-                                        className="w-5 h-5 rounded object-cover border border-blue-500/40 inline-block"
-                                      />
-                                      <span className="underline decoration-dotted underline-offset-2 font-semibold hover:text-blue-300 transition-colors">
-                                        {label || `Photo ${photoIndex + 1}`}
-                                      </span>
-                                    </span>
-                                  </HoverCardTrigger>
-                                  <HoverCardContent side="top" className="w-52 p-1.5" align="start">
-                                    <img
-                                      src={photoUrl}
-                                      alt={`Photo ${photoIndex + 1}`}
-                                      className="w-full rounded object-cover aspect-[4/3]"
-                                    />
-                                    <p className="text-[10px] text-muted-foreground text-center mt-1">Photo {photoIndex + 1}</p>
-                                  </HoverCardContent>
-                                </HoverCard>
-                              );
-                            };
-
                             const heroPhoto = photos[0];
                             const top5Photos = photos.slice(0, 5);
                             const remainingPhotos = photos.slice(5);
@@ -2963,13 +2963,13 @@ export default function ListingDetailPage() {
                                             heroReasonText || "The cover photo creates the first impression for potential guests."
                                           )}
                                         </p>
-                                        {!isAnalyzingPhotos && (photosAnalysisData?.heroStrengths?.length > 0 || photosAnalysisData?.heroWeaknesses?.length > 0) && (
+                                        {!isAnalyzingPhotos && ((photosAnalysisData?.heroStrengths?.length ?? 0) > 0 || (photosAnalysisData?.heroWeaknesses?.length ?? 0) > 0) && (
                                           <div className="grid grid-cols-2 gap-2 mt-2">
-                                            {photosAnalysisData?.heroStrengths?.length > 0 && (
+                                            {(photosAnalysisData?.heroStrengths?.length ?? 0) > 0 && (
                                               <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20">
                                                 <p className="text-[10px] font-medium text-emerald-400 mb-1">Strengths</p>
                                                 <ul className="space-y-0.5">
-                                                  {photosAnalysisData.heroStrengths.map((s: string, i: number) => (
+                                                  {photosAnalysisData!.heroStrengths!.map((s: string, i: number) => (
                                                     <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
                                                       <span className="w-1 h-1 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0" />
                                                       {s}
@@ -2978,11 +2978,11 @@ export default function ListingDetailPage() {
                                                 </ul>
                                               </div>
                                             )}
-                                            {photosAnalysisData?.heroWeaknesses?.length > 0 && (
+                                            {(photosAnalysisData?.heroWeaknesses?.length ?? 0) > 0 && (
                                               <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20">
                                                 <p className="text-[10px] font-medium text-amber-400 mb-1">Weaknesses</p>
                                                 <ul className="space-y-0.5">
-                                                  {photosAnalysisData.heroWeaknesses.map((w: string, i: number) => (
+                                                  {photosAnalysisData!.heroWeaknesses!.map((w: string, i: number) => (
                                                     <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
                                                       <span className="w-1 h-1 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />
                                                       {w}
@@ -3029,13 +3029,13 @@ export default function ListingDetailPage() {
                                         top5ReasonText || "These photos appear first in your listing and are crucial for capturing guest attention."
                                       )}
                                     </p>
-                                    {!isAnalyzingPhotos && (photosAnalysisData?.top5Strengths?.length > 0 || photosAnalysisData?.top5Weaknesses?.length > 0) && (
+                                    {!isAnalyzingPhotos && ((photosAnalysisData?.top5Strengths?.length ?? 0) > 0 || (photosAnalysisData?.top5Weaknesses?.length ?? 0) > 0) && (
                                       <div className="grid grid-cols-2 gap-2 mt-2">
-                                        {photosAnalysisData?.top5Strengths?.length > 0 && (
+                                        {(photosAnalysisData?.top5Strengths?.length ?? 0) > 0 && (
                                           <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20">
                                             <p className="text-[10px] font-medium text-emerald-400 mb-1">Strengths</p>
                                             <ul className="space-y-0.5">
-                                              {photosAnalysisData.top5Strengths.map((s: string, i: number) => (
+                                              {photosAnalysisData!.top5Strengths!.map((s: string, i: number) => (
                                                 <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
                                                   <span className="w-1 h-1 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0" />
                                                   {s}
@@ -3044,11 +3044,11 @@ export default function ListingDetailPage() {
                                             </ul>
                                           </div>
                                         )}
-                                        {photosAnalysisData?.top5Weaknesses?.length > 0 && (
+                                        {(photosAnalysisData?.top5Weaknesses?.length ?? 0) > 0 && (
                                           <div className="p-2 rounded bg-amber-500/10 border border-amber-500/20">
                                             <p className="text-[10px] font-medium text-amber-400 mb-1">Weaknesses</p>
                                             <ul className="space-y-0.5">
-                                              {photosAnalysisData.top5Weaknesses.map((w: string, i: number) => (
+                                              {photosAnalysisData!.top5Weaknesses!.map((w: string, i: number) => (
                                                 <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
                                                   <span className="w-1 h-1 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />
                                                   {w}
@@ -3059,9 +3059,9 @@ export default function ListingDetailPage() {
                                         )}
                                       </div>
                                     )}
-                                    {!isAnalyzingPhotos && photosAnalysisData?.top5Alternatives?.length > 0 && (
+                                    {!isAnalyzingPhotos && (photosAnalysisData?.top5Alternatives?.length ?? 0) > 0 && (
                                       <div className="mt-2 space-y-1.5">
-                                        {photosAnalysisData.top5Alternatives.map((alt: any, i: number) => (
+                                        {photosAnalysisData!.top5Alternatives!.map((alt: any, i: number) => (
                                           <div key={i} className="p-2 rounded bg-blue-500/10 border border-blue-500/20">
                                             <div className="flex items-center gap-1 flex-wrap text-[10px] font-medium text-blue-400 mb-0.5">
                                               <span>Swap</span>
