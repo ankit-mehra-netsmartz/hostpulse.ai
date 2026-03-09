@@ -251,7 +251,7 @@ export function registerListingAnalysisRoutes(app: Express, storage: IStorage) {
           }
         }
         
-        if (page >= MAX_PAGES) {
+        if (page > MAX_PAGES) {
           logger.warn('Analysis', `Warning: Hit MAX_PAGES limit (${MAX_PAGES}) for listing ${listing.name}. Some reviews may not be included.`);
         }
         logger.info('Analysis', `Fetched ${reviews.length} total reviews for listing ${listing.name} (${page} page${page > 1 ? 's' : ''})`);
@@ -869,7 +869,7 @@ Respond in JSON format:
         airbnbUrl = `https://www.airbnb.com/rooms/${airbnbId}`;
         logger.info('Analysis', `Found Airbnb ID from platformIds: ${airbnbId}`);
       } else {
-        airbnbUrl = (listing as any).airbnbUrl || listing.externalUrl || "";
+        airbnbUrl = (listing as any).airbnbUrl || (listing as any).externalUrl || "";
         const airbnbIdMatch = airbnbUrl.match(/rooms\/(\d+)/);
         airbnbId = airbnbIdMatch ? airbnbIdMatch[1] : null;
         if (airbnbId) {
@@ -1099,22 +1099,14 @@ Respond in JSON format:
         listingId: listing.id,
         userId: userId,
         workspaceId: listing.workspaceId,
-        overallScore: 5,
+        score: 5,
         titleGrade: null,
-        titleFeedback: null,
-        titleSuggestions: null,
         descriptionGrade: null,
-        descriptionFeedback: null,
-        descriptionSuggestions: null,
         petGrade: null,
-        petFeedback: null,
-        petSuggestions: null,
         reviewsGrade: null,
-        reviewsFeedback: null,
-        reviewsSuggestions: null,
         idealGrade: null,
         idealGuestProfile: null,
-        topSuggestions: null,
+        suggestions: null,
         superhostGrade: null,
         superhostAnalysis: null,
         sleepGrade: null,
@@ -1124,8 +1116,6 @@ Respond in JSON format:
         superhostStatusGrade: null,
         superhostStatusAnalysis: null,
         photosGrade: null,
-        photosFeedback: null,
-        photosSuggestions: null,
         photoAnalysisStatus: images.length > 0 ? "pending" : "complete",
         photoAnalysisTotalPhotos: images.length,
         photoAnalysisProgress: 0,
@@ -1168,12 +1158,12 @@ ${weightListingInstruction}
 RESERVATIONS (${effectiveReservations.length} total):
 ${reservationsBlock}`;
 
-          const igpPromptFilled = igpPrompt.promptTemplate
+          const igpPromptFilled = (igpPrompt.promptTemplate ?? "")
             .replace("{{listing_name}}", listing.name)
             .replace("{{location}}", listing.address || "Unknown")
             .replace("{{bedrooms}}", String(listing.bedrooms || "Unknown"))
             .replace("{{bathrooms}}", String(listing.bathrooms || "Unknown"))
-            .replace("{{max_guests}}", String(listing.maxGuests || "Unknown"))
+            .replace("{{max_guests}}", String((listing as any).maxGuests || "Unknown"))
             .replace("{{property_type}}", listing.propertyType || "Unknown")
             .replace("{{amenities}}", Array.isArray(amenities) ? amenities.join(", ") : "Unknown")
             .replace("{{reservation_count}}", String(effectiveReservations.length))
@@ -1194,7 +1184,7 @@ Keep summaries concise but informative. Focus on actionable insights from messag
           const igpCompletion = await openai.chat.completions.create({
             model: modelId,
             messages: [
-              { role: "system", content: igpPrompt.systemPrompt },
+              { role: "system", content: igpPrompt.systemPrompt ?? "" },
               { role: "user", content: igpPromptWithBreakdown }
             ],
             response_format: { type: "json_object" },
@@ -1256,7 +1246,7 @@ Keep summaries concise but informative. Focus on actionable insights from messag
       await storage.updateAnalysis(analysisId, {
         idealGrade: igpResult?.grade || "C",
         idealGuestProfile: igpResult,
-        topSuggestions: igpResult?.painPoints || [],
+        suggestions: igpResult?.painPoints || [],
         reviewCount: reviews.length,
         reservationCount: effectiveReservations.length,
         analyzedAt: new Date(),
@@ -1357,6 +1347,7 @@ Keep summaries concise but informative. Focus on actionable insights from messag
               
               const guestFavResult = {
                 grade: gfGrade,
+                score: gfGrade === "A" ? 9 : gfGrade === "B" ? 7 : gfGrade === "N/A" ? 0 : 5,
                 isGuestFavorite,
                 tier: guestFavoriteTier || null,
                 tierLabel: gfTierLabel,
@@ -1385,6 +1376,7 @@ Keep summaries concise but informative. Focus on actionable insights from messag
               
               const superhostStatusResult = {
                 grade: isSuperhost ? "A" : "C",
+                score: isSuperhost ? 9 : 5,
                 isSuperhost: !!isSuperhost,
                 hostName: hostProfile?.name || "Unknown",
                 yearsHosting: hostProfile?.yearsHosting || null,
@@ -1416,7 +1408,7 @@ Keep summaries concise but informative. Focus on actionable insights from messag
                   if (!hp) {
                     await storage.updateAnalysis(analysisId, {
                       superhostGrade: "N/A",
-                      superhostAnalysis: { grade: "N/A", feedback: "No host profile data available", suggestions: [] },
+                      superhostAnalysis: { grade: "N/A", score: 0, feedback: "No host profile data available", suggestions: [] } as CategoryAnalysis,
                     });
                     sendEvent("category", { category: "host_profile", status: "skipped" });
                     return;
@@ -1507,6 +1499,7 @@ Return JSON with:
                   
                   const result = {
                     grade,
+                    score: grade === "A" ? 9 : grade === "B" ? 7 : grade === "C" ? 5 : grade === "D" ? 3 : 1,
                     hostName: hp.name,
                     photoUrl: hp.photoUrl || null,
                     photoScore,
@@ -1544,7 +1537,7 @@ Return JSON with:
                   if (!rooms || rooms.length === 0) {
                     await storage.updateAnalysis(analysisId, {
                       sleepGrade: "N/A",
-                      sleepAnalysis: { grade: "N/A", feedback: "No sleeping arrangement data available", suggestions: [] },
+                      sleepAnalysis: { grade: "N/A", score: 0, feedback: "No sleeping arrangement data available", suggestions: [] } as CategoryAnalysis,
                     });
                     sendEvent("category", { category: "sleep", status: "skipped" });
                     return;
@@ -1644,6 +1637,7 @@ Return JSON with:
                   
                   const result = {
                     grade,
+                    score: grade === "A" ? 9 : grade === "B" ? 7 : grade === "C" ? 5 : grade === "D" ? 3 : 1,
                     roomCount: rooms.length,
                     avgPhotoQuality: Math.round(avgPhotoQuality * 10) / 10,
                     avgComfortAppeal: Math.round(avgComfortAppeal * 10) / 10,
@@ -1674,7 +1668,7 @@ Return JSON with:
             sendEvent("stage", { stage: "scraped", status: "completed" });
           } else {
             logger.info('Analysis', `Scraper returned no data - setting all scraped grades to N/A`);
-            const noDataResult = { grade: "N/A", feedback: "Airbnb data unavailable", suggestions: [] };
+            const noDataResult: CategoryAnalysis = { grade: "N/A", score: 0, feedback: "Airbnb data unavailable", suggestions: [] };
             await storage.updateAnalysis(analysisId, {
               guestFavGrade: "N/A", guestFavAnalysis: noDataResult,
               superhostStatusGrade: "N/A", superhostStatusAnalysis: noDataResult,
@@ -1686,7 +1680,7 @@ Return JSON with:
         })();
       } else {
         logger.info('Analysis', `No scraperPromise (no Airbnb URL) - setting all scraped grades to N/A`);
-        const noUrlResult = { grade: "N/A", feedback: "No Airbnb URL configured", suggestions: ["Add your Airbnb listing URL"] };
+        const noUrlResult: CategoryAnalysis = { grade: "N/A", score: 0, feedback: "No Airbnb URL configured", suggestions: ["Add your Airbnb listing URL"] };
         await storage.updateAnalysis(analysisId, {
           guestFavGrade: "N/A", guestFavAnalysis: noUrlResult,
           superhostStatusGrade: "N/A", superhostStatusAnalysis: noUrlResult,
@@ -1808,7 +1802,7 @@ Return JSON:
           const prompt = await storage.getPromptByCategory(category);
           if (!prompt) return null;
           
-          let filledPrompt = prompt.promptTemplate;
+          let filledPrompt = prompt.promptTemplate ?? "";
           for (const [key, value] of Object.entries(context)) {
             filledPrompt = filledPrompt.replace(new RegExp(`{{${key}}}`, "g"), value);
           }
@@ -1817,7 +1811,7 @@ Return JSON:
           const completion = await openai.chat.completions.create({
             model: modelId,
             messages: [
-              { role: "system", content: prompt.systemPrompt },
+              { role: "system", content: prompt.systemPrompt ?? "" },
               { role: "user", content: filledPrompt }
             ],
             response_format: { type: "json_object" },
@@ -1876,19 +1870,15 @@ Return JSON:
       sendEvent("stage", { stage: "parallel", status: "completed" });
       
       await storage.updateAnalysis(analysisId, {
-        overallScore: reviewsGrade.score || 5,
+        score: reviewsGrade.score || 5,
         titleGrade: normalizeGrade(titleResult?.grade) || "C",
-        titleFeedback: titleResult?.feedback || "",
-        titleSuggestions: titleResult?.suggestions || [],
+        titleAnalysis: titleResult ? { grade: titleResult.grade, score: titleResult.score, feedback: titleResult.feedback, suggestions: titleResult.suggestions || [] } : undefined,
         descriptionGrade: normalizeGrade(descriptionResult?.grade) || "C",
-        descriptionFeedback: descriptionResult?.feedback || "",
-        descriptionSuggestions: descriptionResult?.suggestions || [],
+        descriptionAnalysis: descriptionResult ? { grade: descriptionResult.grade, score: descriptionResult.score, feedback: descriptionResult.feedback, suggestions: descriptionResult.suggestions || [] } : undefined,
         petGrade: normalizeGrade(petGrade.grade) || petGrade.grade,
-        petFeedback: petGrade.feedback,
-        petSuggestions: petGrade.suggestions,
+        petAnalysis: { grade: petGrade.grade, score: petGrade.score, feedback: petGrade.feedback, suggestions: petGrade.suggestions || [] },
         reviewsGrade: normalizeGrade(reviewsGrade.grade) || reviewsGrade.grade,
-        reviewsFeedback: reviewsGrade.feedback,
-        reviewsSuggestions: reviewsGrade.suggestions,
+        reviewsAnalysis: { grade: reviewsGrade.grade, score: reviewsGrade.score ?? 5, feedback: reviewsGrade.feedback, suggestions: reviewsGrade.suggestions || [] },
       });
       logger.info('Analysis', `Updated analysis with Title, Description, Pet, Reviews grades`);
 
@@ -1960,12 +1950,12 @@ Private Remarks: ${r.reviewPrivate || "None"}
 Rating: ${r.rating || "N/A"}`
           ).join("\n\n");
 
-          let igpPromptFilled = igpPrompt.promptTemplate
+          let igpPromptFilled = (igpPrompt.promptTemplate ?? "")
             .replace("{{listing_name}}", listing.name)
             .replace("{{location}}", listing.address || "Unknown")
             .replace("{{bedrooms}}", String(listing.bedrooms || "Unknown"))
             .replace("{{bathrooms}}", String(listing.bathrooms || "Unknown"))
-            .replace("{{max_guests}}", String(listing.maxGuests || "Unknown"))
+            .replace("{{max_guests}}", String((listing as any).maxGuests || "Unknown"))
             .replace("{{property_type}}", listing.propertyType || "Unknown")
             .replace("{{amenities}}", Array.isArray(amenities) ? amenities.join(", ") : "Unknown")
             .replace("{{reservation_count}}", String(effectiveReservations.length))
@@ -1978,7 +1968,7 @@ Rating: ${r.rating || "N/A"}`
           const igpFinalCompletion = await openai.chat.completions.create({
             model: modelId,
             messages: [
-              { role: "system", content: igpPrompt.systemPrompt },
+              { role: "system", content: igpPrompt.systemPrompt ?? "" },
               { role: "user", content: igpPromptFilled }
             ],
             response_format: { type: "json_object" },
@@ -2031,10 +2021,10 @@ LISTING DETAILS:
 - Property Type: ${listing.propertyType || "Unknown"}
 - Bedrooms: ${listing.bedrooms || "Unknown"}
 - Bathrooms: ${listing.bathrooms || "Unknown"}
-- Max Guests: ${listing.maxGuests || "Unknown"}
+- Max Guests: ${(listing as any).maxGuests || "Unknown"}
 - Amenities: ${Array.isArray(amenities) ? amenities.join(", ") : "Unknown"}
 - Description: ${listing.description || "Not provided"}
-- Pets Allowed: ${listing.petsAllowed ? "Yes" : "No"}
+- Pets Allowed: ${(listing as any).petsAllowed ? "Yes" : "No"}
 
 ANALYSIS RESULTS:
 ${titleResult ? `Title Grade: ${titleResult.grade} - ${titleResult.feedback}` : ""}
@@ -2104,10 +2094,9 @@ Return JSON:
 
       await storage.updateAnalysis(analysisId, {
         idealGrade: igpResult?.grade || "C",
-        idealFeedback: igpResult?.summary || "IGP analysis complete",
-        idealSuggestions: igpResult?.painPoints || [],
+        idealAnalysis: igpResult ? { grade: igpResult.grade || "C", score: igpResult.score || 5, feedback: igpResult.summary || "IGP analysis complete", suggestions: igpResult.painPoints || [] } : undefined,
         idealGuestProfile: igpResult,
-        topSuggestions: igpResult?.painPoints || [],
+        suggestions: igpResult?.painPoints || [],
       });
       
       logger.info('Analysis', `Updated with IGP results. Analysis ID: ${analysisId}`);
@@ -2149,6 +2138,11 @@ Return JSON:
       const body = req.body && typeof req.body === "object" ? req.body : {};
       const category = typeof body.category === "string" ? body.category.trim() : "";
 
+      const VALID_CATEGORIES = ["title", "description", "pet", "reviews", "guest_favorites", "superhost_status", "sleep", "host_profile"];
+      if (!category || !VALID_CATEGORIES.includes(category)) {
+        return res.status(400).json({ message: `Invalid category. Must be one of: ${VALID_CATEGORIES.join(", ")}` });
+      }
+
       const listing = await storage.getListing(listingId);
       if (!listing) return res.status(404).json({ message: "Listing not found" });
       if (listing.workspaceId) {
@@ -2164,7 +2158,7 @@ Return JSON:
           listingId,
           userId,
           workspaceId: listing.workspaceId,
-          overallScore: 5,
+          score: 5,
           titleGrade: null, descriptionGrade: null, petGrade: null, reviewsGrade: null,
           idealGrade: null, idealGuestProfile: null,
           superhostGrade: null, superhostAnalysis: null, sleepGrade: null, sleepAnalysis: null,
@@ -2205,6 +2199,7 @@ Return JSON:
             : "This listing has not yet earned the Guest Favorite badge. Focus on consistently high ratings, reliability, and guest satisfaction to achieve this status.";
           const guestFavResult = {
             grade: gfGrade,
+            score: gfGrade === "A" ? 9 : 5,
             isGuestFavorite,
             tier: guestFavoriteTier || null,
             tierLabel: gfTierLabel,
@@ -2219,6 +2214,7 @@ Return JSON:
         if (category === "superhost_status") {
           const superhostStatusResult = {
             grade: isSuperhost ? "A" : "C",
+            score: isSuperhost ? 9 : 5,
             isSuperhost,
             hostName: hostProfile?.name || "Unknown",
             yearsHosting: hostProfile?.yearsHosting ?? null,
@@ -2307,8 +2303,7 @@ Return JSON:
         }
         await storage.updateAnalysis(analysisId, {
           reviewsGrade: grade,
-          reviewsFeedback: feedback,
-          reviewsSuggestions: suggestions,
+          reviewsAnalysis: { grade, score: score ?? 5, feedback, suggestions },
         });
         await recalculateOverallGrade(analysisId, storage);
         return res.json({ category: "reviews", grade, data: { grade, score, feedback, suggestions } });
@@ -2381,7 +2376,7 @@ Return JSON:
             }
           }
         }
-        await storage.updateAnalysis(analysisId, { petGrade: petResult.grade, petFeedback: petResult.feedback, petSuggestions: petResult.suggestions });
+        await storage.updateAnalysis(analysisId, { petGrade: petResult.grade, petAnalysis: petResult });
         await recalculateOverallGrade(analysisId, storage);
         return res.json({ category: "pet", grade: petResult.grade, data: petResult });
       }
@@ -2391,14 +2386,14 @@ Return JSON:
         const runCategoryAnalysis = async (cat: string, context: Record<string, string>) => {
           const prompt = await storage.getPromptByCategory(cat);
           if (!prompt) return null;
-          let filledPrompt = prompt.promptTemplate;
+          let filledPrompt = prompt.promptTemplate ?? "";
           for (const [key, value] of Object.entries(context)) {
             filledPrompt = filledPrompt.replace(new RegExp(`{{${key}}}`, "g"), value);
           }
           const { modelId, modelInfo } = await getConfiguredAIModel();
           const completion = await openai.chat.completions.create({
             model: modelId,
-            messages: [{ role: "system", content: prompt.systemPrompt }, { role: "user", content: filledPrompt }],
+            messages: [{ role: "system", content: prompt.systemPrompt ?? "" }, { role: "user", content: filledPrompt }],
             response_format: { type: "json_object" },
             max_tokens: 1500,
           });
@@ -2428,11 +2423,11 @@ Return JSON:
         if (!result) return res.status(500).json({ message: `Failed to run ${category} analysis` });
         const normalizedGrade = normalizeGrade(result.grade) || "C";
         if (category === "title") {
-          await storage.updateAnalysis(analysisId, { titleGrade: normalizedGrade, titleFeedback: result.feedback || "", titleSuggestions: result.suggestions || [] });
+          await storage.updateAnalysis(analysisId, { titleGrade: normalizedGrade, titleAnalysis: { grade: normalizedGrade, score: result.score || 5, feedback: result.feedback || "", suggestions: result.suggestions || [] } });
           await recalculateOverallGrade(analysisId, storage);
           return res.json({ category: "title", grade: normalizedGrade, data: { ...result, grade: normalizedGrade } });
         }
-        await storage.updateAnalysis(analysisId, { descriptionGrade: normalizedGrade, descriptionFeedback: result.feedback || "", descriptionSuggestions: result.suggestions || [] });
+        await storage.updateAnalysis(analysisId, { descriptionGrade: normalizedGrade, descriptionAnalysis: { grade: normalizedGrade, score: result.score || 5, feedback: result.feedback || "", suggestions: result.suggestions || [] } });
         await recalculateOverallGrade(analysisId, storage);
         return res.json({ category: "description", grade: normalizedGrade, data: { ...result, grade: normalizedGrade } });
       }
@@ -3091,7 +3086,7 @@ Return a JSON object with:
         return res.status(404).json({ message: "Listing not found" });
       }
 
-      const photoIndex = parseInt(req.params.photoIndex, 10);
+      const photoIndex = parseInt(getParamId(req.params.photoIndex), 10);
       const images = (listing.images as string[]) || [];
       
       if (photoIndex < 0 || photoIndex >= images.length) {
@@ -3161,7 +3156,7 @@ Be accurate about what you see. Focus on vacation rental appeal and what guests 
           });
 
           const resolutionValue = aiResult.technicalDetails?.resolution?.toLowerCase() || "";
-          const isLowResolution = resolutionValue && !resolutionValue.includes("high");
+          const isLowResolution = !!resolutionValue && (resolutionValue.includes("low") || resolutionValue.includes("very low"));
 
           const analysis = await storage.createPhotoAnalysis({
             listingId: listing.id,
@@ -3307,7 +3302,7 @@ Be accurate about what you see. Focus on vacation rental appeal and what guests 
           });
 
           const resolutionValue = aiResult.technicalDetails?.resolution?.toLowerCase() || "";
-          const isLowResolution = resolutionValue && !resolutionValue.includes("high");
+          const isLowResolution = !!resolutionValue && (resolutionValue.includes("low") || resolutionValue.includes("very low"));
 
           const analysis = await storage.createPhotoAnalysis({
             listingId: listing.id,
@@ -3392,7 +3387,7 @@ IDEAL GUEST PROFILE (use this to judge every photo):
 ${idp.summary || ""}
 Guest types: ${idp.guestTypes?.join(", ") || "Not specified"}
 Travel purposes: ${idp.travelPurposes?.join(", ") || "Not specified"}
-Key values: ${idp.keyValues?.join(", ") || "Not specified"}
+Key values: ${(idp as any).keyValues?.join(", ") || "Not specified"}
 ` : ""}
 
 ANALYZED PHOTOS (each with AI vision analysis):
@@ -3590,7 +3585,7 @@ Return a JSON response:
         return res.status(404).json({ message: "Listing not found" });
       }
 
-      const photoIndex = parseInt(req.params.photoIndex, 10);
+      const photoIndex = parseInt(getParamId(req.params.photoIndex), 10);
       const images = (listing.images as string[]) || [];
       
       if (photoIndex < 0 || photoIndex >= images.length) {
@@ -3669,7 +3664,7 @@ Return a JSON response:
         return res.status(404).json({ message: "Listing not found" });
       }
 
-      const photoIndex = parseInt(req.params.photoIndex, 10);
+      const photoIndex = parseInt(getParamId(req.params.photoIndex), 10);
       const images = (listing.images as string[]) || [];
       
       if (photoIndex < 0 || photoIndex >= images.length) {
@@ -3748,7 +3743,7 @@ Return a JSON response:
         return res.status(404).json({ message: "Listing not found" });
       }
 
-      const photoIndex = parseInt(req.params.photoIndex, 10);
+      const photoIndex = parseInt(getParamId(req.params.photoIndex), 10);
       const images = (listing.images as string[]) || [];
       
       if (photoIndex < 0 || photoIndex >= images.length) {
@@ -3907,8 +3902,8 @@ Return a JSON response:
       const userId = getUserId(req);
       const listingId = getParamId(req.params.id);
       
-      const listing = await storage.getListingById(listingId, userId);
-      if (!listing) {
+      const listing = await storage.getListing(listingId);
+      if (!listing || listing.userId !== userId) {
         return res.status(404).json({ message: "Listing not found" });
       }
 
@@ -3969,11 +3964,12 @@ Return a JSON response:
   app.post("/api/listings/:id/photos/:photoIndex/enhance-feedback", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req);
-      const { id: listingId, photoIndex } = req.params;
+      const { id: listingIdRaw, photoIndex } = req.params;
+      const listingId = getParamId(listingIdRaw);
       const { isPositive, feedback } = req.body;
 
       const listing = await storage.getListing(listingId);
-      if (!listing) {
+      if (!listing || listing.userId !== userId) {
         return res.status(404).json({ message: "Listing not found" });
       }
 
@@ -3988,19 +3984,13 @@ Return a JSON response:
 
       await storage.createAiUsageLog({
         userId,
-        workspaceId: listing.workspaceId,
         model: "feedback",
-        promptTokens: 0,
-        completionTokens: 0,
-        totalCost: "0",
         label,
+        inputTokens: 0,
+        outputTokens: 0,
+        estimatedCost: 0,
         listingId: listing.id,
         listingName: listing.name,
-        metadata: {
-          photoIndex: parseInt(photoIndex),
-          isPositive,
-          feedback: feedback || null,
-        },
       });
 
       res.json({ success: true });
