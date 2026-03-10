@@ -559,13 +559,16 @@ export function registerListingRoutes(app: Express, storage: IStorage): void {
       
       for (const property of properties) {
         let propertyDetails: any = null;
+        let enrichedProperty: any = property;
         try {
           const { data: rawDetails, error: detailsError } = await hospitableApiRequest(
             dataSourceId,
-            `/properties/${property.id}?include=details`
+            `/properties/${property.id}?include=details,listings,user`
           );
           if (rawDetails && !detailsError) {
             propertyDetails = rawDetails?.data || rawDetails;
+            // Use the enriched property data (with user and listings) for owner resolution
+            enrichedProperty = propertyDetails || property;
           } else if (detailsError) {
             logger.error('Sync', `Error fetching details for ${property.name}:`, detailsError);
           }
@@ -575,22 +578,26 @@ export function registerListingRoutes(app: Express, storage: IStorage): void {
         
         const existing = existingListings.find(l => l.externalId === property.id);
         
-        const platformInfo = property.listings?.[0];
+        // Use enriched property listings (from server-side fetch) if available, else fall back to client-passed data
+        const mergedListings = enrichedProperty.listings || property.listings;
+        const platformInfo = mergedListings?.[0];
         const platform = platformInfo?.platform || "unknown";
         
         const platformIds: { [key: string]: string | undefined } = {};
         let publicListingTitle: string | null = null;
-        if (Array.isArray(property.listings)) {
-          logger.info('Sync', `Processing ${property.listings.length} listings for ${property.name}:`, 
-            JSON.stringify(property.listings.map((l: any) => ({ 
+        if (Array.isArray(mergedListings)) {
+          logger.info('Sync', `Processing ${mergedListings.length} listings for ${property.name}:`, 
+            JSON.stringify(mergedListings.map((l: any) => ({ 
               platform: l.platform, 
               platform_id: l.platform_id, 
               title: l.title, 
               name: l.name,
+              platform_name: l.platform_name,
+              platform_email: l.platform_email,
               keys: Object.keys(l)
             })), null, 2));
           
-          for (const listing of property.listings) {
+          for (const listing of mergedListings) {
             if (listing.platform && listing.platform_id) {
               const normalizedPlatform = listing.platform === "booking.com" 
                 ? "bookingCom" 
@@ -616,7 +623,31 @@ export function registerListingRoutes(app: Express, storage: IStorage): void {
         } else if (platform === "vrbo" && platformInfo?.platform_id) {
           publicUrl = `https://www.vrbo.com/${platformInfo.platform_id}`;
         }
-        
+
+        // Resolve owner name and account email from Hospitable user (server-fetched),
+        // with fallback to the Airbnb listing's platform_name / platform_email
+        const airbnbListing = Array.isArray(mergedListings)
+          ? mergedListings.find((l: any) => l.platform === "airbnb")
+          : null;
+        const enrichedUser = enrichedProperty.user || property.user;
+        const resolvedOwnerName =
+          enrichedProperty.owner?.name ||
+          property.owner?.name ||
+          enrichedUser?.name ||
+          (enrichedUser?.first_name && enrichedUser?.last_name
+            ? `${enrichedUser.first_name} ${enrichedUser.last_name}`.trim()
+            : enrichedUser?.first_name || enrichedUser?.last_name || null) ||
+          airbnbListing?.platform_name ||
+          null;
+        const resolvedAccountEmail =
+          enrichedProperty.owner?.email ||
+          property.owner?.email ||
+          enrichedUser?.email ||
+          airbnbListing?.platform_email ||
+          null;
+
+        logger.info('Sync', `Owner/account resolution for ${property.name}: user=${JSON.stringify(enrichedUser)}, airbnbListing platform_name="${airbnbListing?.platform_name}", platform_email="${airbnbListing?.platform_email}" -> ownerName="${resolvedOwnerName}", accountEmail="${resolvedAccountEmail}"`);
+
         const addressParts = [
           property.address?.street,
           property.address?.city,
@@ -701,8 +732,8 @@ export function registerListingRoutes(app: Express, storage: IStorage): void {
             amenities,
             images,
             houseRules: property.house_rules || null,
-            ownerName: property.owner?.name,
-            accountEmail: property.owner?.email,
+            ownerName: resolvedOwnerName,
+            accountEmail: resolvedAccountEmail,
             lastSyncedAt: new Date(),
             syncDays,
             isActive: true,
@@ -737,8 +768,8 @@ export function registerListingRoutes(app: Express, storage: IStorage): void {
             amenities,
             images,
             houseRules: property.house_rules || null,
-            ownerName: property.owner?.name,
-            accountEmail: property.owner?.email,
+            ownerName: resolvedOwnerName,
+            accountEmail: resolvedAccountEmail,
             lastSyncedAt: new Date(),
             syncDays,
             isActive: true,

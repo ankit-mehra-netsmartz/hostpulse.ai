@@ -30,6 +30,8 @@ interface HospitableProperty {
   listings?: Array<{
     platform?: string;
     platform_id?: string;
+    platform_name?: string;
+    platform_email?: string;
   }>;
   capacity?: {
     bedrooms?: number;
@@ -41,6 +43,12 @@ interface HospitableProperty {
   photos?: string[];
   owner?: {
     name?: string;
+    email?: string;
+  };
+  user?: {
+    name?: string;
+    first_name?: string;
+    last_name?: string;
     email?: string;
   };
 }
@@ -206,6 +214,16 @@ export default function PropertySelection() {
       navigate("/data-sources");
     }
   }, [isLoadingDataSources, connectedSource, navigate]);
+
+  // Silently refresh owner/account metadata for existing listings that are missing it
+  useEffect(() => {
+    if (!connectedSource?.id || !existingListings) return;
+    const hasMissingOwnerData = existingListings.some(l => !l.ownerName && !l.accountEmail);
+    if (!hasMissingOwnerData) return;
+    apiRequest("POST", `/api/data-sources/${connectedSource.id}/refresh-owner-metadata`)
+      .then(res => { if (res.ok) queryClient.invalidateQueries({ queryKey: ["/api/listings"] }); })
+      .catch(() => { /* non-critical, ignore */ });
+  }, [connectedSource?.id, existingListings]);
 
   useEffect(() => {
     if (activeSyncIdRef.current && isBackgroundModeRef.current) {
@@ -955,7 +973,10 @@ export default function PropertySelection() {
                         </td>
                         <td className="p-3">
                           <span className="text-sm text-muted-foreground">
-                            {property.owner?.email || "—"}
+                            {property.owner?.email ||
+                              property.user?.email ||
+                              property.listings?.find(l => l.platform === "airbnb")?.platform_email ||
+                              "—"}
                           </span>
                         </td>
                         <td className="p-3">
@@ -970,7 +991,13 @@ export default function PropertySelection() {
                         </td>
                         <td className="p-3">
                           <span className="text-sm">
-                            {property.owner?.name || "—"}
+                            {property.owner?.name ||
+                              property.user?.name ||
+                              (property.user?.first_name
+                                ? `${property.user.first_name} ${property.user.last_name || ""}`.trim()
+                                : null) ||
+                              property.listings?.find(l => l.platform === "airbnb")?.platform_name ||
+                              "—"}
                           </span>
                         </td>
                         <td className="p-3">

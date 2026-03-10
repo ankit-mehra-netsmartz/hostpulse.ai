@@ -565,6 +565,69 @@ export function registerDataSourceRoutes(app: Express, storage: IStorage): void 
     }
   });
 
+  // Refresh owner/account metadata for all existing listings under a data source
+  app.post("/api/data-sources/:id/refresh-owner-metadata", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const dataSourceId = getParamId(req.params.id);
+      const dataSource = await storage.getDataSource(dataSourceId);
+
+      if (!dataSource || dataSource.userId !== userId) {
+        return res.status(404).json({ message: "Data source not found" });
+      }
+
+      const { data, error } = await fetchHospitableProperties(dataSourceId);
+
+      if (error || !data) {
+        return res.status(500).json({ message: error || "Failed to fetch properties from Hospitable" });
+      }
+
+      // Hospitable API response wraps properties in a `data` array
+      const properties: any[] = (data as any)?.data || [];
+      const existingListings = await storage.getListingsByDataSource(dataSourceId);
+
+      let updatedCount = 0;
+
+      for (const property of properties) {
+        const existing = existingListings.find((l) => l.externalId === property.id);
+        if (!existing) continue;
+
+        const airbnbListing = Array.isArray(property.listings)
+          ? property.listings.find((l: any) => l.platform === "airbnb")
+          : null;
+
+        const resolvedOwnerName =
+          property.owner?.name ||
+          property.user?.name ||
+          (property.user?.first_name && property.user?.last_name
+            ? `${property.user.first_name} ${property.user.last_name}`.trim()
+            : property.user?.first_name || property.user?.last_name || null) ||
+          airbnbListing?.platform_name ||
+          null;
+
+        const resolvedAccountEmail =
+          property.owner?.email ||
+          property.user?.email ||
+          airbnbListing?.platform_email ||
+          null;
+
+        if (resolvedOwnerName !== null || resolvedAccountEmail !== null) {
+          await storage.updateListing(existing.id, {
+            ownerName: resolvedOwnerName ?? existing.ownerName,
+            accountEmail: resolvedAccountEmail ?? existing.accountEmail,
+          });
+          updatedCount++;
+        }
+      }
+
+      logger.info('DataSources', `Refreshed owner metadata for ${updatedCount} listings under data source ${dataSourceId}`);
+      res.json({ updated: updatedCount });
+    } catch (error) {
+      logger.error('DataSources', "Error refreshing owner metadata:", error);
+      res.status(500).json({ message: "Failed to refresh owner metadata" });
+    }
+  });
+
   // Fetch properties from Hospitable API
   app.get("/api/data-sources/:id/properties", isAuthenticated, async (req, res) => {
     try {

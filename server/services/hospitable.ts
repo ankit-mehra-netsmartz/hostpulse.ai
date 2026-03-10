@@ -212,7 +212,7 @@ export async function hospitableApiRequest<T = any>(
 export async function fetchHospitableProperties(dataSourceId: string) {
   return hospitableApiRequest(
     dataSourceId,
-    "/properties?include=listings,details&per_page=100"
+    "/properties?include=listings,details,user&per_page=100"
   );
 }
 
