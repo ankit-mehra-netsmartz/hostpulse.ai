@@ -39,149 +39,120 @@ async function delay(ms: number): Promise<void> {
 async function extractWhereYoullSleep(page: Page): Promise<{ data?: WhereYoullSleep; hasSection: boolean }> {
   try {
     logger.info('AirbnbScanner', 'Looking for sleeping arrangement section...');
-    
-    // Look for the sleeping arrangement section with updated Airbnb selectors
-    let sleepSection = await page.$('[data-section-id="SLEEPING_ARRANGEMENT_WITH_IMAGES"], [data-section-id="SLEEPING_ARRANGEMENT"]');
-    if (!sleepSection) {
-      // Fallback to text-based search
-      sleepSection = await page.$('section:has-text("Where you\'ll sleep")');
-      if (!sleepSection) {
-        logger.info('AirbnbScanner', 'No sleeping arrangement section found');
-        return { hasSection: false };
-      }
-    }
-    
-    logger.info('AirbnbScanner', 'Found sleeping section, extracting rooms...');
 
-    const rooms: WhereYoullSleep['rooms'] = [];
-    
-    // Enhanced selector patterns for room cards with image containers
-    // Airbnb uses carousel containers for each bedroom with an image
-    const roomCards = await page.$$(`
-      [data-section-id="SLEEPING_ARRANGEMENT_WITH_IMAGES"] [role="group"] > div,
-      [data-section-id="SLEEPING_ARRANGEMENT_WITH_IMAGES"] [data-testid*="carousel-item"],
-      [data-testid="pdp-sleeping-arrangement-card"],
-      div[aria-label*="Bedroom"],
-      [data-section-id="SLEEPING_ARRANGEMENT_WITH_IMAGES"] button[aria-label*="Bedroom"]
-    `.replace(/\s+/g, ' ').trim());
-    
-    logger.info('AirbnbScanner', `Found ${roomCards.length} room cards`);
-    
-    if (roomCards.length === 0) {
-      // Try finding images directly within the sleeping section
-      const images = await sleepSection.$$('img');
-      logger.info('AirbnbScanner', `Found ${images.length} images in sleep section`);
-      
-      // Try extracting from section text content
-      const sectionText = sleepSection ? await sleepSection.textContent() : '';
-      // Airbnb text pattern: "Bedroom 11 king bedBedroom 24 queen beds" 
-      // = "Bedroom 1" + "1 king bed", "Bedroom 2" + "4 queen beds"
-      // Use lookahead to split on "Bedroom" or "Living room" 
-      const roomParts = sectionText?.split(/(?=Bedroom|Living room)/i).filter(p => p.trim().length > 0) || [];
-      
-      for (let i = 0; i < roomParts.length; i++) {
-        const part = roomParts[i];
-        // Match "Bedroom X" or "Living room" followed by bed configuration
-        const bedroomMatch = part.match(/^Bedroom\s*(\d)/i);
-        const livingMatch = part.match(/^Living room/i);
-        
-        // Try to get corresponding image for this room
-        let photoUrl: string | undefined = undefined;
-        if (images.length > i) {
-          try {
-            // Get the src directly - Airbnb uses responsive images
-            photoUrl = await images[i].getAttribute('src') || undefined;
-            // Fallback to srcset if needed
-            if (!photoUrl) {
-              const srcset = await images[i].getAttribute('srcset');
-              if (srcset) {
-                // Get highest resolution from srcset
-                const srcParts = srcset.split(',').map(s => s.trim());
-                const lastSrc = srcParts[srcParts.length - 1];
-                photoUrl = lastSrc.split(' ')[0];
-              }
-            }
-          } catch {}
-        }
-        
-        if (bedroomMatch) {
-          const bedroomNum = bedroomMatch[1];
-          // Everything after "Bedroom X" is the bed config (including count)
-          const bedConfig = part.replace(/^Bedroom\s*\d\s*/i, '').trim();
-          rooms.push({
-            name: `Bedroom ${bedroomNum}`,
-            bedConfiguration: bedConfig,
-            photoUrl,
-          });
-        } else if (livingMatch) {
-          const bedConfig = part.replace(/^Living room\s*/i, '').trim();
-          rooms.push({
-            name: 'Living room',
-            bedConfiguration: bedConfig,
-            photoUrl,
-          });
+    // Scroll to the sleeping section to trigger lazy loading
+    const scrolledToSection = await page.evaluate(async () => {
+      const ids = ['SLEEPING_ARRANGEMENT_WITH_IMAGES', 'SLEEPING_ARRANGEMENT'];
+      for (const id of ids) {
+        const el = document.querySelector(`[data-section-id="${id}"]`);
+        if (el) { (el as HTMLElement).scrollIntoView({ block: 'center' }); return true; }
+      }
+      // Text-based fallback scroll
+      const allEls = document.querySelectorAll('section, div[data-section-id]');
+      for (const el of allEls) {
+        if (el.textContent?.includes("Where you'll sleep")) {
+          (el as HTMLElement).scrollIntoView({ block: 'center' });
+          return true;
         }
       }
-    } else {
-      for (const card of roomCards) {
-        try {
-          // Enhanced selectors for name extraction
-          const nameEl = await card.$('h3, [class*="title"], div > span:first-child, button > div > span');
-          const name = nameEl ? await nameEl.textContent() : 'Room';
-          
-          // Enhanced selectors for bed configuration
-          const bedConfigEl = await card.$('p, [class*="subtitle"], div > div > span, button > div > div > span');
-          const bedConfiguration = bedConfigEl ? await bedConfigEl.textContent() : '';
-          
-          // Enhanced image extraction - try multiple patterns
-          let photoUrl: string | undefined = undefined;
-          const imgEl = await card.$('img, picture img');
-          if (imgEl) {
-            photoUrl = await imgEl.getAttribute('src') || undefined;
-            // Try srcset for higher resolution
-            if (!photoUrl) {
-              const srcset = await imgEl.getAttribute('srcset');
-              if (srcset) {
-                const srcParts = srcset.split(',').map(s => s.trim());
-                const lastSrc = srcParts[srcParts.length - 1];
-                photoUrl = lastSrc.split(' ')[0];
-              }
-            }
+      return false;
+    });
+
+    if (scrolledToSection) await delay(1500);
+
+    // Use page.evaluate for reliable cross-version extraction
+    const extractedRooms = await page.evaluate(() => {
+      const sectionIds = ['SLEEPING_ARRANGEMENT_WITH_IMAGES', 'SLEEPING_ARRANGEMENT'];
+      let section: Element | null = null;
+
+      for (const id of sectionIds) {
+        section = document.querySelector(`[data-section-id="${id}"]`);
+        if (section) break;
+      }
+
+      if (!section) {
+        // Text-based section search
+        const candidates = document.querySelectorAll('section, div[data-section-id], div[id]');
+        for (const el of candidates) {
+          if (el.textContent?.includes("Where you'll sleep")) {
+            section = el;
+            break;
           }
-          
-          // Fallback: check parent for background image
-          if (!photoUrl) {
-            const bgStyle = await card.evaluate(el => {
-              const style = window.getComputedStyle(el);
-              return style.backgroundImage;
-            });
-            if (bgStyle && bgStyle !== 'none') {
-              const urlMatch = bgStyle.match(/url\(["']?([^"')]+)["']?\)/);
-              if (urlMatch) {
-                photoUrl = urlMatch[1];
-              }
-            }
-          }
-          
-          if (name) {
-            rooms.push({
-              name: name.trim(),
-              bedConfiguration: bedConfiguration?.trim() || '',
-              photoUrl: photoUrl || undefined,
-            });
-            logger.info('AirbnbScanner', `Extracted room: ${name.trim()}, has photo: ${!!photoUrl}`);
-          }
-        } catch (e) {
-          logger.info('AirbnbScanner', 'Error extracting room card:', e);
+        }
+      }
+
+      if (!section) return null;
+
+      const result: Array<{ name: string; bedConfiguration: string; photoUrl?: string }> = [];
+
+      // Strategy 1: card elements with aria-labels or test ids
+      const cardSelectors = [
+        '[data-testid="pdp-sleeping-arrangement-card"]',
+        '[aria-label*="Bedroom"]',
+        '[aria-label*="bedroom"]',
+      ];
+      for (const sel of cardSelectors) {
+        const cards = section.querySelectorAll(sel);
+        if (cards.length > 0) {
+          cards.forEach(card => {
+            const nameEl = card.querySelector('h3, h4, [class*="title"]');
+            const name = nameEl?.textContent?.trim() || '';
+            const bedEl = card.querySelector('p, [class*="subtitle"]');
+            const bedConfig = bedEl?.textContent?.trim() || '';
+            const img = card.querySelector('img');
+            const photoUrl = img?.getAttribute('src') || undefined;
+            if (name) result.push({ name, bedConfiguration: bedConfig, photoUrl });
+          });
+          if (result.length > 0) return result;
+        }
+      }
+
+      // Strategy 2: text-content parsing (Airbnb concatenates room + bed text)
+      const text = section.textContent || '';
+      const parts = text.split(/(?=Bedroom\s+\d+|Living\s+room|Studio)/i).filter(p => p.trim().length > 2);
+      const imgs = Array.from(section.querySelectorAll('img'));
+
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i].trim();
+        const bedroomMatch = part.match(/^Bedroom\s*(\d+)/i);
+        const livingMatch = part.match(/^Living\s+room/i);
+        const studioMatch = part.match(/^Studio/i);
+
+        let name = '';
+        let bedConfig = '';
+
+        if (bedroomMatch) {
+          name = `Bedroom ${bedroomMatch[1]}`;
+          bedConfig = part.replace(/^Bedroom\s*\d+\s*/i, '').trim();
+        } else if (livingMatch) {
+          name = 'Living room';
+          bedConfig = part.replace(/^Living\s+room\s*/i, '').trim();
+        } else if (studioMatch) {
+          name = 'Studio';
+          bedConfig = part.replace(/^Studio\s*/i, '').trim();
+        } else {
           continue;
         }
+
+        // Trim anything that looks like the next room's name bleeding in
+        bedConfig = bedConfig.replace(/\s*(Bedroom\s+\d+|Living\s+room|Studio).*$/i, '').trim();
+
+        const photoUrl = imgs[i]?.getAttribute('src') || undefined;
+        result.push({ name, bedConfiguration: bedConfig, photoUrl });
       }
+
+      return result.length > 0 ? result : null;
+    });
+
+    if (!extractedRooms || extractedRooms.length === 0) {
+      logger.info('AirbnbScanner', 'No sleeping arrangement data extracted');
+      return { hasSection: false };
     }
 
-    logger.info('AirbnbScanner', `Extracted ${rooms.length} rooms total`);
+    logger.info('AirbnbScanner', `Extracted ${extractedRooms.length} rooms total`);
     return {
-      hasSection: rooms.length > 0,
-      data: rooms.length > 0 ? { rooms } : undefined,
+      hasSection: true,
+      data: { rooms: extractedRooms },
     };
   } catch (error) {
     logger.error('AirbnbScanner', 'Error extracting Where You\'ll Sleep:', error);
@@ -649,12 +620,16 @@ export async function scanAirbnbListing(airbnbUrl: string): Promise<AirbnbScanRe
 
     logger.info('AirbnbScanner', 'Extracting data...');
 
-    const [sleepResult, isSuperhost, guestFavoriteTier, hostProfile] = await Promise.all([
+    // Run non-navigating extractions in parallel first
+    const [sleepResult, isSuperhost, guestFavoriteTier] = await Promise.all([
       extractWhereYoullSleep(page),
       extractSuperHostStatus(page),
       extractGuestFavoriteTier(page),
-      extractHostProfile(page),
     ]);
+
+    // Run host profile LAST — it may call page.goto() to navigate to the host profile page,
+    // which would destroy the context of any concurrent extractor still running on the listing page.
+    const hostProfile = await extractHostProfile(page);
 
     const rawSnapshot = {
       url: airbnbUrl,

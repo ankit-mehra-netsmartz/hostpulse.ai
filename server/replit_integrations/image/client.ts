@@ -1,10 +1,23 @@
 import { GoogleGenAI, Modality, Part } from "@google/genai";
 
-export const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+let _ai: GoogleGenAI | null = null;
+
+function getAiClient(): GoogleGenAI {
+  if (!_ai) {
+    const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("AI_INTEGRATIONS_GEMINI_API_KEY is not configured");
+    }
+    _ai = new GoogleGenAI({ apiKey });
+  }
+  return _ai;
+}
+
+// Lazy proxy: module can be imported without an API key.
+// The key is only required when a method is actually called.
+export const ai: GoogleGenAI = new Proxy({} as GoogleGenAI, {
+  get(_, prop: string) {
+    return (getAiClient() as any)[prop];
   },
 });
 

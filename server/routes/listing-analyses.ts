@@ -3803,9 +3803,8 @@ Return a JSON response:
           listingName: listing.name,
         });
 
-        const { enhanceImageWithPrompt } = await import("../replit_integrations/image/client");
-        
         try {
+          const { enhanceImageWithPrompt } = await import("../replit_integrations/image/client");
           const imageResult = await enhanceImageWithPrompt(photoUrl, editResult.enhancedPrompt);
           
           await storage.createAiUsageLog({

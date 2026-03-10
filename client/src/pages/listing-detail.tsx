@@ -993,7 +993,7 @@ export default function ListingDetailPage() {
           </Alert>
           <div className="flex gap-4 justify-center">
             <Button variant="outline" asChild>
-              <Link href="/">
+              <Link href="/listing-analysis">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Listings
               </Link>
@@ -1046,7 +1046,7 @@ export default function ListingDetailPage() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="icon" asChild data-testid="button-back">
-              <Link href="/">
+              <Link href="/listing-analysis">
                 <ArrowLeft className="w-5 h-5" />
               </Link>
             </Button>
