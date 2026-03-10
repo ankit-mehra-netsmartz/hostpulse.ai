@@ -189,6 +189,7 @@ export const listingAnalyses = pgTable("listing_analyses", {
   photoAnalysisProgress: integer("photo_analysis_progress").default(0),
   photoAnalysisTotalPhotos: integer("photo_analysis_total_photos").default(0),
   overallGrade: varchar("overall_grade"),
+  completedCategories: jsonb("completed_categories").$type<string[]>().default([]),
   analyzedAt: timestamp("analyzed_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 });

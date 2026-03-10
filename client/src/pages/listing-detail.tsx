@@ -408,6 +408,30 @@ export default function ListingDetailPage() {
     },
   });
 
+  const markCategoryCompleteMutation = useMutation({
+    mutationFn: async (category: string) => {
+      if (!analysis?.id) throw new Error("No analysis found");
+      const current: string[] = analysis.completedCategories ?? [];
+      const updated = current.includes(category)
+        ? current.filter((c) => c !== category)
+        : [...current, category];
+      const res = await apiRequest("PATCH", `/api/analyses/${analysis.id}`, { completedCategories: updated });
+      return res.json();
+    },
+    onSuccess: (_data, category) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", listingId] });
+      const current: string[] = analysis?.completedCategories ?? [];
+      if (current.includes(category)) {
+        toast({ title: "Marked incomplete", description: "Category has been unmarked." });
+      } else {
+        toast({ title: "Marked as complete", description: "Category has been marked as complete." });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "Could not update status", description: err.message, variant: "destructive" });
+    },
+  });
+
   // Re-trigger Airbnb scan (e.g. after a failed scan)
   const rescanAirbnbMutation = useMutation({
     mutationFn: async () => {
@@ -2461,6 +2485,11 @@ export default function ListingDetailPage() {
                               ) : (
                                 <GradeBadge grade={grade as any} size="sm" />
                               )}
+                              {analysis?.completedCategories?.includes(cat.key) && (
+                                <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 ring-1 ring-inset ring-emerald-500/30">
+                                  <Check className="w-2.5 h-2.5 mr-0.5" />Done
+                                </span>
+                              )}
                               <ChevronRight className={`w-4 h-4 text-muted-foreground transition-transform ${
                                 selectedCategory === cat.key ? "rotate-90" : ""
                               }`} />
@@ -3282,9 +3311,14 @@ export default function ListingDetailPage() {
 
                           {/* Mark as Complete Button */}
                           <div className="flex justify-end">
-                            <Button variant="outline" data-testid="button-mark-photos-complete">
+                            <Button
+                              variant={analysis?.completedCategories?.includes("photos") ? "default" : "outline"}
+                              onClick={() => markCategoryCompleteMutation.mutate("photos")}
+                              disabled={markCategoryCompleteMutation.isPending}
+                              data-testid="button-mark-photos-complete"
+                            >
                               <Check className="w-4 h-4 mr-2" />
-                              Mark as Complete
+                              {analysis?.completedCategories?.includes("photos") ? "Completed" : "Mark as Complete"}
                             </Button>
                           </div>
                         </CardContent>
@@ -3452,9 +3486,14 @@ export default function ListingDetailPage() {
                           )}
 
                           <div className="flex justify-end">
-                            <Button variant="outline" data-testid="button-mark-title-complete">
+                            <Button
+                              variant={analysis?.completedCategories?.includes("title") ? "default" : "outline"}
+                              onClick={() => markCategoryCompleteMutation.mutate("title")}
+                              disabled={markCategoryCompleteMutation.isPending}
+                              data-testid="button-mark-title-complete"
+                            >
                               <Check className="w-4 h-4 mr-2" />
-                              Mark as Complete
+                              {analysis?.completedCategories?.includes("title") ? "Completed" : "Mark as Complete"}
                             </Button>
                           </div>
                         </CardContent>
@@ -3702,9 +3741,14 @@ export default function ListingDetailPage() {
                           </div>
 
                           <div className="flex justify-end">
-                            <Button variant="outline" data-testid="button-mark-pet-complete">
+                            <Button
+                              variant={analysis?.completedCategories?.includes("pet") ? "default" : "outline"}
+                              onClick={() => markCategoryCompleteMutation.mutate("pet")}
+                              disabled={markCategoryCompleteMutation.isPending}
+                              data-testid="button-mark-pet-complete"
+                            >
                               <Check className="w-4 h-4 mr-2" />
-                              Mark as Complete
+                              {analysis?.completedCategories?.includes("pet") ? "Completed" : "Mark as Complete"}
                             </Button>
                           </div>
                         </CardContent>
@@ -3903,9 +3947,14 @@ export default function ListingDetailPage() {
                           )}
 
                           <div className="flex justify-end">
-                            <Button variant="outline" data-testid="button-mark-description-complete">
+                            <Button
+                              variant={analysis?.completedCategories?.includes("description") ? "default" : "outline"}
+                              onClick={() => markCategoryCompleteMutation.mutate("description")}
+                              disabled={markCategoryCompleteMutation.isPending}
+                              data-testid="button-mark-description-complete"
+                            >
                               <Check className="w-4 h-4 mr-2" />
-                              Mark as Complete
+                              {analysis?.completedCategories?.includes("description") ? "Completed" : "Mark as Complete"}
                             </Button>
                           </div>
                         </CardContent>
