@@ -489,6 +489,9 @@ export default function ListingDetailPage() {
   const backgroundAnalysisIdRef = useRef<string | null>(null);
   const foregroundAnalysisIdRef = useRef<string | null>(null);
   const isBackgroundModeRef = useRef(false);
+  // Track when an in-progress analysis is restored from localStorage after navigation
+  const [isRestoredFromStorage, setIsRestoredFromStorage] = useState(false);
+  const restoredStartedAtRef = useRef<number | null>(null);
   const { toast } = useToast();
   const {
     startBackgroundAnalysis,
@@ -556,6 +559,42 @@ export default function ListingDetailPage() {
     setPhotoAnalysisProgress(0);
   }, [listingId]);
 
+  // Restore analysis progress bar from localStorage when the user navigates back
+  // to this listing while an analysis is still running on the server.
+  useEffect(() => {
+    if (!listingId) return;
+    const key = `hostpulse-analysis-${listingId}`;
+    try {
+      const stored = localStorage.getItem(key);
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as { startedAt: number; previousAnalysisId: string | null };
+      const AGE_LIMIT_MS = 10 * 60 * 1000; // discard entries older than 10 minutes
+      if (Date.now() - parsed.startedAt > AGE_LIMIT_MS) {
+        localStorage.removeItem(key);
+        return;
+      }
+      // Only restore if an SSE-driven analysis is not already active
+      setStagedAnalysisProgress((prev) => {
+        if (prev.isActive) return prev;
+        return {
+          isActive: true,
+          currentStage: "in_progress",
+          stageMessage: "Analysis in progress...",
+          igpResult: null,
+          categoryResults: {},
+          completed: false,
+          scraperStatus: "idle",
+          scrapedCategoriesAnalyzing: [],
+          parallelCategoriesAnalyzing: [],
+        };
+      });
+      setIsRestoredFromStorage(true);
+      restoredStartedAtRef.current = parsed.startedAt;
+    } catch {
+      // Ignore storage errors
+    }
+  }, [listingId]);
+
   // Keep isBackgroundMode in sync with ref for use in mutation callbacks
   useEffect(() => {
     isBackgroundModeRef.current = isBackgroundMode;
@@ -598,6 +637,9 @@ export default function ListingDetailPage() {
   } = useQuery<ListingWithAnalysis>({
     queryKey: ["/api/listings", listingId],
     enabled: !!listingId,
+    // Poll when we've restored an in-progress analysis from localStorage so we
+    // can detect completion even without a live SSE connection.
+    refetchInterval: isRestoredFromStorage ? 3000 : false,
   });
 
   const { data: reservations = [], isLoading: reservationsLoading } = useQuery<
@@ -877,6 +919,103 @@ export default function ListingDetailPage() {
     phase2PhotoAnalysisMutation.isPending,
   ]);
 
+  // When the analysis was restored from localStorage (no live SSE), poll the
+  // listing data and update the progress bar with real grades as they arrive,
+  // then close the bar when the analysis is complete.
+  useEffect(() => {
+    if (!isRestoredFromStorage || !listing?.analysis) return;
+    const key = `hostpulse-analysis-${listingId}`;
+    let stored: { startedAt: number; previousAnalysisId: string | null } | null = null;
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) {
+        // Entry was already cleared (e.g. by another tab); just stop showing bar
+        setIsRestoredFromStorage(false);
+        setStagedAnalysisProgress((prev) => ({
+          ...prev,
+          isActive: false,
+          completed: true,
+          currentStage: "complete",
+          stageMessage: "Analysis complete",
+        }));
+        return;
+      }
+      stored = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const { previousAnalysisId } = stored!;
+    // A new analysis record means the server created it after we started
+    const isNewAnalysis = listing.analysis.id !== previousAnalysisId;
+    // Still waiting for the server to create the new analysis record
+    if (!isNewAnalysis) return;
+
+    // Build a categoryResults map from the DB grades so the progress steps
+    // show checkmarks and the percentage reflects real server-side completion.
+    const a = listing.analysis;
+    const synthesized: Record<string, any> = {};
+    if (a.titleGrade) synthesized.title = { grade: a.titleGrade };
+    if (a.descriptionGrade) synthesized.description = { grade: a.descriptionGrade };
+    if (a.reviewsGrade) synthesized.reviews = { grade: a.reviewsGrade };
+    if (a.petGrade) synthesized.pet = { grade: a.petGrade };
+    if (a.sleepGrade) synthesized.sleep = { grade: a.sleepGrade };
+    if (a.superhostGrade) synthesized.host_profile = { grade: a.superhostGrade };
+    if (a.guestFavGrade) synthesized.guest_favorites = { grade: a.guestFavGrade };
+    if (a.superhostStatusGrade) synthesized.superhost_status = { grade: a.superhostStatusGrade };
+
+    // Core parallel-category grades indicate the main analysis phase is done
+    const coreGradesDone =
+      a.titleGrade != null &&
+      a.reviewsGrade != null;
+
+    if (coreGradesDone) {
+      // Analysis complete — clear bar and notify
+      localStorage.removeItem(key);
+      setIsRestoredFromStorage(false);
+      restoredStartedAtRef.current = null;
+      setStagedAnalysisProgress((prev) => ({
+        ...prev,
+        isActive: false,
+        completed: true,
+        currentStage: "complete",
+        stageMessage: "Analysis complete",
+        igpResult: a.idealGuestProfile ?? prev.igpResult,
+        categoryResults: synthesized,
+      }));
+      setScoresClearedForRerun(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/listings", listingId] });
+      toast({
+        title: "Analysis Complete",
+        description: "Listing analysis completed successfully.",
+      });
+    } else {
+      // Still running — update categoryResults and advance currentStage so
+      // completed steps show checkmarks instead of empty circles.
+      const hasIgp = a.idealGuestProfile != null;
+      setStagedAnalysisProgress((prev) => ({
+        ...prev,
+        categoryResults: synthesized,
+        igpResult: a.idealGuestProfile ?? prev.igpResult,
+        currentStage: hasIgp ? "scraped" : "parallel",
+        stageMessage: "Analysis in progress...",
+      }));
+    }
+  }, [
+    isRestoredFromStorage,
+    listing?.analysis?.id,
+    listing?.analysis?.titleGrade,
+    listing?.analysis?.descriptionGrade,
+    listing?.analysis?.reviewsGrade,
+    listing?.analysis?.petGrade,
+    listing?.analysis?.sleepGrade,
+    listing?.analysis?.superhostGrade,
+    listing?.analysis?.guestFavGrade,
+    listing?.analysis?.superhostStatusGrade,
+    listing?.analysis?.idealGrade,
+    listingId,
+    toast,
+  ]);
+
   const filteredReservations = reservations.filter((reservation) => {
     const guestName = reservation.guestName || "";
     const reservationId =
@@ -1048,6 +1187,25 @@ export default function ListingDetailPage() {
 
     // Check if listing has Airbnb URL - if so, scraper starts immediately
     const hasAirbnbUrl = !!listing?.platformIds?.airbnb;
+
+    // Clear any previously-restored state so the fresh SSE-driven progress
+    // takes over and the completion-detection effect doesn't fire prematurely.
+    setIsRestoredFromStorage(false);
+    restoredStartedAtRef.current = null;
+
+    // Persist analysis start to localStorage so the progress bar can be
+    // restored if the user navigates away and returns before it finishes.
+    try {
+      localStorage.setItem(
+        `hostpulse-analysis-${listingId}`,
+        JSON.stringify({
+          startedAt: Date.now(),
+          previousAnalysisId: listing?.analysis?.id ?? null,
+        }),
+      );
+    } catch {
+      // Ignore storage errors
+    }
 
     idpSheetClosedByUserRef.current = false;
     setScoresClearedForRerun(true);
@@ -1273,6 +1431,9 @@ export default function ListingDetailPage() {
         eventSource.close();
         stagedAnalysisEventSourceRef.current = null;
         setScoresClearedForRerun(false);
+        // Clear localStorage entry — analysis completed normally via SSE
+        try { localStorage.removeItem(`hostpulse-analysis-${listingId}`); } catch {}
+        setIsRestoredFromStorage(false);
         queryClient.invalidateQueries({
           queryKey: ["/api/listings", listingId],
         });
@@ -1294,6 +1455,8 @@ export default function ListingDetailPage() {
         }));
         eventSource.close();
         stagedAnalysisEventSourceRef.current = null;
+        try { localStorage.removeItem(`hostpulse-analysis-${listingId}`); } catch {}
+        setIsRestoredFromStorage(false);
       }
     });
 
@@ -1323,6 +1486,9 @@ export default function ListingDetailPage() {
           : "Analysis failed",
       }));
 
+      // Clear localStorage entry — analysis ended (even with error)
+      try { localStorage.removeItem(`hostpulse-analysis-${listingId}`); } catch {}
+      setIsRestoredFromStorage(false);
       eventSource.close();
       stagedAnalysisEventSourceRef.current = null;
     });
@@ -1331,6 +1497,7 @@ export default function ListingDetailPage() {
     toast,
     phase2PhotoAnalysisMutation,
     listing?.platformIds?.airbnb,
+    listing?.analysis?.id,
   ]);
 
   // Auto-start staged analysis when navigating from Home/Listing Analysis with ?analyze=1
