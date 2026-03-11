@@ -37,562 +37,210 @@ async function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// async function extractWhereYoullSleep(
-//   page: Page,
-// ): Promise<{ data?: WhereYoullSleep; hasSection: boolean }> {
-//   try {
-//     logger.info("AirbnbScanner", "Looking for sleeping arrangement section...");
-//     const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
-//     const isBedText = (s: string) =>
-//       /(king|queen|double|single|sofa\s*bed|sofa|couch|futon|bunk|bed)/i.test(
-//         s,
-//       );
-//     const cleanBedConfig = (s: string) => {
-//       let out = normalize(s)
-//         .replace(/^Bedroom\s*\d+/i, "")
-//         .replace(/^Living room/i, "")
-//         .trim();
-//       if (!isBedText(out)) return "";
-//       return out;
-//     };
-
-//     // Keep names unique and preserve first room image when available.
-//     const roomByName = new Map<
-//       string,
-//       { name: string; bedConfiguration: string; photoUrl?: string }
-//     >();
-//     const upsertRoom = (nameRaw: string, bedRaw: string, photoUrl?: string) => {
-//       const name = normalize(nameRaw || "Room");
-//       if (!name) return;
-//       const bedConfiguration = cleanBedConfig(bedRaw || "");
-//       const existing = roomByName.get(name);
-//       if (!existing) {
-//         roomByName.set(name, { name, bedConfiguration, photoUrl });
-//         return;
-//       }
-//       if (!existing.bedConfiguration && bedConfiguration)
-//         existing.bedConfiguration = bedConfiguration;
-//       if (!existing.photoUrl && photoUrl) existing.photoUrl = photoUrl;
-//     };
-
-//     // First look for explicit sleep section containers.
-//     let sleepSection = await page.$(
-//       [
-//         'section[role="region"][aria-labelledby="sleeping-arrangements-title"]',
-//         'div[data-plugin-in-point-id="SLEEPING_ARRANGEMENT_DEFAULT"]',
-//       ].join(", "),
-//     );
-
-//     logger.info(
-//       "AirbnbScanner",
-//       "Sleeping arrangement section detected, extracting rooms...",
-//     );
-//     // 1) Structured extraction from section card UI.
-//     if (sleepSection) {
-//       const isDivSleepingSection =
-//         (await sleepSection.getAttribute("data-section-id")) ===
-//         "SLEEPING_ARRANGEMENT_DEFAULT";
-
-//       if (isDivSleepingSection) {
-//         // No-image layout: each room name lives in a childless leaf div whose
-//         // text exactly matches "Bedroom N" / "Living room", with bed config as
-//         // the immediately following sibling div.
-//         const extractedRooms = await sleepSection.evaluate(
-//           (container: Element) => {
-//             const results: Array<{ name: string; bedText: string }> = [];
-//             const divs = container.querySelectorAll("div");
-//             for (const div of Array.from(divs)) {
-//               const text = (div.textContent || "").trim();
-//               if (
-//                 /^(Bedroom\s*\d+|Living room)$/i.test(text) &&
-//                 div.childElementCount === 0
-//               ) {
-//                 const bedSibling = div.nextElementSibling;
-//                 const bedText = (bedSibling?.textContent || "").trim();
-//                 results.push({ name: text, bedText });
-//               }
-//             }
-//             return results;
-//           },
-//         );
-
-//         logger.info(
-//           "AirbnbScanner",
-//           `Found ${extractedRooms.length} rooms via div text extraction`,
-//         );
-
-//         for (const { name, bedText } of extractedRooms) {
-//           upsertRoom(name, bedText);
-//         }
-//       } else {
-//         // Image-carousel layout: each room is an li[data-key] card.
-//         const roomCards = await sleepSection.$$("li[data-key]");
-//         logger.info(
-//           "AirbnbScanner",
-//           `Found ${roomCards.length} structured room cards`,
-//         );
-
-//         for (const card of roomCards) {
-//           try {
-//             const keyName = normalize(
-//               (await card.getAttribute("data-key")) || "",
-//             );
-
-//             let name = keyName;
-//             if (!name) {
-//               const nameEl = await card.$(
-//                 '[aria-label*="Bedroom" i], [aria-label*="Living room" i], div',
-//               );
-//               name = normalize((await nameEl?.textContent()) || "");
-//             }
-
-//             let bedText = "";
-//             const bedEl = await card.$(
-//               '[aria-label*="bed" i], [aria-label*="sofa" i], p, span, div',
-//             );
-//             bedText = normalize((await bedEl?.textContent()) || "");
-
-//             if (!isBedText(bedText)) {
-//               const cardText = normalize((await card.textContent()) || "");
-//               const bedMatch = cardText.match(
-//                 /(\d+\s*(king|queen|double|single|sofa\s*bed|sofa|couch|futon|bunk)\s*(bed|beds)?)/i,
-//               );
-//               bedText = bedMatch ? normalize(bedMatch[0]) : "";
-//             }
-
-//             let photoUrl: string | undefined;
-//             const imgEl = await card.$("img, picture img");
-//             if (imgEl) {
-//               photoUrl =
-//                 (await imgEl.getAttribute("data-original-uri")) ||
-//                 (await imgEl.getAttribute("src")) ||
-//                 undefined;
-//               if (!photoUrl) {
-//                 const srcset = await imgEl.getAttribute("srcset");
-//                 if (srcset) {
-//                   const last = srcset
-//                     .split(",")
-//                     .map((s: string) => s.trim())
-//                     .pop();
-//                   photoUrl = last ? last.split(" ")[0] : undefined;
-//                 }
-//               }
-//             }
-
-//             if (!photoUrl) {
-//               const sourceEl = await card.$("picture source[srcset]");
-//               if (sourceEl) {
-//                 const srcset = await sourceEl.getAttribute("srcset");
-//                 if (srcset) {
-//                   const last = srcset
-//                     .split(",")
-//                     .map((s: string) => s.trim())
-//                     .pop();
-//                   photoUrl = last ? last.split(" ")[0] : undefined;
-//                 }
-//               }
-//             }
-
-//             if (name) {
-//               upsertRoom(name, bedText, photoUrl);
-//             }
-//           } catch (e) {
-//             logger.info(
-//               "AirbnbScanner",
-//               "Error extracting structured room card:",
-//               e,
-//             );
-//           }
-//         }
-//       }
-//     }
-
-//     const rooms = Array.from(roomByName.values());
-//     logger.info("AirbnbScanner", `Extracted ${rooms.length} rooms total`);
-
-//     return {
-//       hasSection: true,
-//       data: rooms.length > 0 ? { rooms } : undefined,
-//     };
-//   } catch (error) {
-//     logger.error(
-//       "AirbnbScanner",
-//       "Error extracting Where You'll Sleep:",
-//       error,
-//     );
-//     return { hasSection: false };
-//   }
-// }
-
 async function extractWhereYoullSleep(
   page: Page,
 ): Promise<{ data?: WhereYoullSleep; hasSection: boolean }> {
   try {
-<<<<<<< Updated upstream
-    logger.info('AirbnbScanner', 'Looking for sleeping arrangement section...');
-
-    // Scroll to the sleeping section to trigger lazy loading
-    const scrolledToSection = await page.evaluate(async () => {
-      const ids = ['SLEEPING_ARRANGEMENT_WITH_IMAGES', 'SLEEPING_ARRANGEMENT'];
-      for (const id of ids) {
-        const el = document.querySelector(`[data-section-id="${id}"]`);
-        if (el) { (el as HTMLElement).scrollIntoView({ block: 'center' }); return true; }
-      }
-      // Text-based fallback scroll
-      const allEls = document.querySelectorAll('section, div[data-section-id]');
-      for (const el of allEls) {
-        if (el.textContent?.includes("Where you'll sleep")) {
-          (el as HTMLElement).scrollIntoView({ block: 'center' });
-          return true;
-        }
-      }
-      return false;
-    });
-
-    if (scrolledToSection) await delay(1500);
-
-    // Use page.evaluate for reliable cross-version extraction
-    const extractedRooms = await page.evaluate(() => {
-      const sectionIds = ['SLEEPING_ARRANGEMENT_WITH_IMAGES', 'SLEEPING_ARRANGEMENT'];
-      let section: Element | null = null;
-
-      for (const id of sectionIds) {
-        section = document.querySelector(`[data-section-id="${id}"]`);
-        if (section) break;
-      }
-
-      if (!section) {
-        // Text-based section search
-        const candidates = document.querySelectorAll('section, div[data-section-id], div[id]');
-        for (const el of candidates) {
-          if (el.textContent?.includes("Where you'll sleep")) {
-            section = el;
-            break;
-          }
-        }
-      }
-
-      if (!section) return null;
-
-      const result: Array<{ name: string; bedConfiguration: string; photoUrl?: string }> = [];
-
-      // Strategy 1: card elements with aria-labels or test ids
-      const cardSelectors = [
-        '[data-testid="pdp-sleeping-arrangement-card"]',
-        '[aria-label*="Bedroom"]',
-        '[aria-label*="bedroom"]',
-      ];
-      for (const sel of cardSelectors) {
-        const cards = section.querySelectorAll(sel);
-        if (cards.length > 0) {
-          cards.forEach(card => {
-            const nameEl = card.querySelector('h3, h4, [class*="title"]');
-            const name = nameEl?.textContent?.trim() || '';
-            const bedEl = card.querySelector('p, [class*="subtitle"]');
-            const bedConfig = bedEl?.textContent?.trim() || '';
-            const img = card.querySelector('img');
-            const photoUrl = img?.getAttribute('src') || undefined;
-            if (name) result.push({ name, bedConfiguration: bedConfig, photoUrl });
-          });
-          if (result.length > 0) return result;
-        }
-      }
-
-      // Strategy 2: text-content parsing (Airbnb concatenates room + bed text)
-      const text = section.textContent || '';
-      const parts = text.split(/(?=Bedroom\s+\d+|Living\s+room|Studio)/i).filter(p => p.trim().length > 2);
-      const imgs = Array.from(section.querySelectorAll('img'));
-
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i].trim();
-        const bedroomMatch = part.match(/^Bedroom\s*(\d+)/i);
-        const livingMatch = part.match(/^Living\s+room/i);
-        const studioMatch = part.match(/^Studio/i);
-
-        let name = '';
-        let bedConfig = '';
-
-        if (bedroomMatch) {
-          name = `Bedroom ${bedroomMatch[1]}`;
-          bedConfig = part.replace(/^Bedroom\s*\d+\s*/i, '').trim();
-        } else if (livingMatch) {
-          name = 'Living room';
-          bedConfig = part.replace(/^Living\s+room\s*/i, '').trim();
-        } else if (studioMatch) {
-          name = 'Studio';
-          bedConfig = part.replace(/^Studio\s*/i, '').trim();
-        } else {
-          continue;
-        }
-
-        // Trim anything that looks like the next room's name bleeding in
-        bedConfig = bedConfig.replace(/\s*(Bedroom\s+\d+|Living\s+room|Studio).*$/i, '').trim();
-
-        const photoUrl = imgs[i]?.getAttribute('src') || undefined;
-        result.push({ name, bedConfiguration: bedConfig, photoUrl });
-=======
     logger.info("AirbnbScanner", "Looking for sleeping arrangement section...");
- 
     const normalize = (s: string) => s.replace(/\s+/g, " ").trim();
- 
-    const BED_PATTERN =
-      /(king|queen|double|single|sofa\s*bed|sofa|couch|futon|bunk|bed)/i;
- 
-    const isBedText = (s: string) => BED_PATTERN.test(s);
- 
-    /** Extract all bed descriptions from a card's full text */
-    const extractAllBeds = (cardText: string): string => {
-      // Match patterns like "1 king bed", "2 single beds", "1 sofa bed"
-      const matches = [
-        ...cardText.matchAll(
-          /\d+\s*(king|queen|double|single|sofa\s*bed|sofa|couch|futon|bunk)\s*(bed|beds)?/gi,
-        ),
-      ];
-      if (matches.length > 0) {
-        return matches.map((m) => normalize(m[0])).join(", ");
-      }
-      // Fallback: grab any sentence containing a bed keyword
-      const sentence = cardText
-        .split(/[·•\n]/)
-        .map(normalize)
-        .find(isBedText);
-      return sentence || "";
+    const isBedText = (s: string) =>
+      /(king|queen|double|single|sofa\s*bed|sofa|couch|futon|bunk|bed)/i.test(
+        s,
+      );
+    const cleanBedConfig = (s: string) => {
+      let out = normalize(s)
+        .replace(/^Bedroom\s*\d+/i, "")
+        .replace(/^Living room/i, "")
+        .trim();
+      if (!isBedText(out)) return "";
+      return out;
     };
- 
-    /** Pick highest-resolution URL from a srcset string */
-    const bestFromSrcset = (srcset: string): string | undefined => {
-      const entries = srcset
-        .split(",")
-        .map((entry) => {
-          const [url, descriptor = "1w"] = entry.trim().split(/\s+/);
-          const width = parseInt(descriptor) || 1;
-          return { url, width };
-        })
-        .sort((a, b) => b.width - a.width);
-      return entries[0]?.url;
-    };
- 
-    const extractImageFromCard = async (
-      card: ElementHandle,
-    ): Promise<string | undefined> => {
-      // Priority 1: data-original-uri (full quality Airbnb image)
-      const img = await card.$("img");
-      if (img) {
-        const originalUri = await img.getAttribute("data-original-uri");
-        if (originalUri) return originalUri;
- 
-        // Priority 2: highest res from srcset
-        const srcset =
-          (await img.getAttribute("srcset")) ||
-          (await card.$eval(
-            "picture source[srcset]",
-            (el) => el.getAttribute("srcset") || "",
-          ).catch(() => ""));
-        if (srcset) {
-          const best = bestFromSrcset(srcset);
-          if (best) return best;
-        }
- 
-        // Priority 3: src (last resort — often low-res placeholder)
-        const src = await img.getAttribute("src");
-        if (src && !src.startsWith("data:")) return src;
-      }
- 
-      // Also check <picture> sources directly
-      const sourceEl = await card.$("picture source[srcset]");
-      if (sourceEl) {
-        const srcset = await sourceEl.getAttribute("srcset");
-        if (srcset) return bestFromSrcset(srcset);
-      }
- 
-      return undefined;
-    };
- 
-    // Keep names unique, preserve first room image when available
-    const roomByName = new Map
+
+    // Keep names unique and preserve first room image when available.
+    const roomByName = new Map<
       string,
       { name: string; bedConfiguration: string; photoUrl?: string }
->();
- 
-    const upsertRoom = (
-      nameRaw: string,
-      bedConfig: string,
-      photoUrl?: string,
-    ) => {
+    >();
+    const upsertRoom = (nameRaw: string, bedRaw: string, photoUrl?: string) => {
       const name = normalize(nameRaw || "Room");
       if (!name) return;
+      const bedConfiguration = cleanBedConfig(bedRaw || "");
       const existing = roomByName.get(name);
       if (!existing) {
-        roomByName.set(name, { name, bedConfiguration: bedConfig, photoUrl });
+        roomByName.set(name, { name, bedConfiguration, photoUrl });
         return;
       }
-      if (!existing.bedConfiguration && bedConfig)
-        existing.bedConfiguration = bedConfig;
+      if (!existing.bedConfiguration && bedConfiguration)
+        existing.bedConfiguration = bedConfiguration;
       if (!existing.photoUrl && photoUrl) existing.photoUrl = photoUrl;
     };
- 
-    // ── Locate the sleep section ──────────────────────────────────────────────
-    const sleepSection = await page.$(
+
+    // First look for explicit sleep section containers.
+    let sleepSection = await page.$(
       [
         'section[role="region"][aria-labelledby="sleeping-arrangements-title"]',
         'div[data-plugin-in-point-id="SLEEPING_ARRANGEMENT_DEFAULT"]',
-        'div[data-section-id="SLEEPING_ARRANGEMENT_DEFAULT"]',
-        // Fallback: any section whose heading mentions "sleep"
-        'section:has(h2:text-matches("sleep", "i"))',
-        'div:has(h2:text-matches("sleep", "i"))',
       ].join(", "),
     );
- 
-    if (!sleepSection) {
-      logger.info("AirbnbScanner", "No sleeping arrangement section found.");
-      return { hasSection: false };
-    }
- 
+
     logger.info(
       "AirbnbScanner",
       "Sleeping arrangement section detected, extracting rooms...",
     );
- 
-    // ── Try to expand hidden rooms (carousel / "Show all" button) ────────────
-    try {
-      const showAllBtn = await sleepSection.$(
-        'button:text-matches("show all|see more|show more", "i")',
-      );
-      if (showAllBtn) {
-        await showAllBtn.click();
-        await page.waitForTimeout(600);
-        logger.info("AirbnbScanner", "Expanded 'Show all' rooms button");
-      }
-    } catch (_) {
-      /* non-fatal */
-    }
- 
-    const sectionId = await sleepSection.getAttribute("data-section-id");
-    const isDivSection = sectionId === "SLEEPING_ARRANGEMENT_DEFAULT";
- 
-    // ── Structured card extraction ────────────────────────────────────────────
-    // Prefer specific selectors over generic "div"
-    const CARD_SELECTORS = [
-      "li[data-key]",           // classic list-item cards
-      '[data-testid*="room"]',  // testid-based cards
-      '[aria-label*="Bedroom" i]',
-      '[aria-label*="Living room" i]',
-      ...(isDivSection
-        ? [
-            // For the div-based section, grab only direct children
-            // that look like cards (have an img or a heading inside)
-            ":scope > div:has(img), :scope > div:has(h3)",
-          ]
-        : []),
-    ];
- 
-    let roomCards: ElementHandle[] = [];
-    for (const sel of CARD_SELECTORS) {
-      try {
-        const found = await sleepSection.$$(sel);
-        if (found.length > 0) {
-          roomCards = found;
-          logger.info(
-            "AirbnbScanner",
-            `Matched ${found.length} cards with selector: "${sel}"`,
-          );
-          break;
+    // 1) Structured extraction from section card UI.
+    if (sleepSection) {
+      const isDivSleepingSection =
+        (await sleepSection.getAttribute("data-section-id")) ===
+        "SLEEPING_ARRANGEMENT_DEFAULT";
+
+      if (isDivSleepingSection) {
+        // No-image grid/carousel layout: each room name lives in a (near-)leaf
+        // div whose text exactly matches "Bedroom N", "Living room", etc., with
+        // the bed config as the immediately following sibling div.
+        const extractVisible = async (): Promise<
+          Array<{ name: string; bedText: string }>
+        > =>
+          sleepSection!.evaluate((container: Element) => {
+            const results: Array<{ name: string; bedText: string }> = [];
+            const roomNameRe =
+              /^(Bedroom\s*\d*|Living room|Studio|Loft|Den|Suite|Common area|Common space|Sleeping loft)$/i;
+            for (const div of Array.from(container.querySelectorAll("div"))) {
+              const text = (div.textContent || "").trim();
+              // Accept leaf divs AND divs whose only children are inline
+              // elements (e.g. Airbnb wraps the label text in a <span>).
+              const isLeafLike =
+                div.childElementCount === 0 ||
+                Array.from(div.children).every((c) =>
+                  ["SPAN", "EM", "B", "I", "STRONG"].includes(c.tagName),
+                );
+              if (roomNameRe.test(text) && isLeafLike) {
+                const bedSibling = div.nextElementSibling;
+                const bedText = (bedSibling?.textContent || "").trim();
+                results.push({ name: text, bedText });
+              }
+            }
+            return results;
+          });
+
+        // Collect rooms from the first visible carousel page
+        for (const { name, bedText } of await extractVisible()) {
+          upsertRoom(name, bedText);
         }
-      } catch (_) {
-        /* selector may not be supported in this Playwright version */
-      }
-    }
- 
-    logger.info(
-      "AirbnbScanner",
-      `Processing ${roomCards.length} room cards...`,
-    );
- 
-    for (const card of roomCards) {
-      try {
-        // ── Room name ───────────────────────────────────────────────────────
-        let name =
-          normalize((await card.getAttribute("data-key")) || "") ||
-          normalize(
-            (await card.$eval(
-              [
-                "h2",
-                "h3",
-                "h4",
-                '[aria-label*="Bedroom" i]',
-                '[aria-label*="Living room" i]',
-              ].join(", "),
-              (el) => el.textContent || "",
-            ).catch(() => "")),
+
+        // Navigate through remaining carousel pages (if any)
+        try {
+          const nextBtn = await page.$(
+            '[data-section-id="SLEEPING_ARRANGEMENT_DEFAULT"] [aria-label="Next"], ' +
+              'section[aria-labelledby="sleeping-arrangements-title"] [aria-label="Next"]',
           );
- 
-        // Strip leading "Bedroom N" / "Living room" prefix from full card text
-        // only if we still have no usable name
-        if (!name) {
-          const cardText = normalize((await card.textContent()) || "");
-          const roomMatch = cardText.match(
-            /^(Bedroom\s*\d+|Living\s*room|Common\s*space)/i,
-          );
-          name = roomMatch ? roomMatch[0] : "";
+          if (nextBtn) {
+            for (let i = 0; i < 10; i++) {
+              const disabled = await nextBtn.isDisabled().catch(() => true);
+              if (disabled) break;
+              await nextBtn.click({ timeout: 2000 });
+              await delay(500);
+              for (const { name, bedText } of await extractVisible()) {
+                upsertRoom(name, bedText);
+              }
+            }
+          }
+        } catch {
+          // Carousel navigation is best-effort
         }
- 
-        if (!name) continue; // skip cards we can't identify
- 
-        // ── Bed configuration ───────────────────────────────────────────────
-        const cardText = normalize((await card.textContent()) || "");
-        const bedConfiguration = extractAllBeds(cardText);
- 
-        // ── Photo ───────────────────────────────────────────────────────────
-        const photoUrl = await extractImageFromCard(card);
- 
-        upsertRoom(name, bedConfiguration, photoUrl);
-      } catch (e) {
-        logger.info("AirbnbScanner", "Error processing room card:", e);
->>>>>>> Stashed changes
-      }
 
-      return result.length > 0 ? result : null;
-    });
-
-    if (!extractedRooms || extractedRooms.length === 0) {
-      logger.info('AirbnbScanner', 'No sleeping arrangement data extracted');
-      return { hasSection: false };
-    }
-<<<<<<< Updated upstream
-
-    logger.info('AirbnbScanner', `Extracted ${extractedRooms.length} rooms total`);
-    return {
-      hasSection: true,
-      data: { rooms: extractedRooms },
-=======
- 
-    // ── Fallback: plain-text parse if structured extraction yielded nothing ──
-    if (roomByName.size === 0) {
-      logger.info(
-        "AirbnbScanner",
-        "Structured extraction empty — falling back to text parse",
-      );
-      const sectionText = normalize((await sleepSection.textContent()) || "");
-      const segments = sectionText.split(
-        /(?=Bedroom\s*\d+|Living\s*room|Common\s*space)/i,
-      );
-      for (const seg of segments) {
-        const nameMatch = seg.match(
-          /^(Bedroom\s*\d+|Living\s*room|Common\s*space)/i,
+        logger.info(
+          "AirbnbScanner",
+          `Found ${roomByName.size} rooms via div text extraction`,
         );
-        if (!nameMatch) continue;
-        const bedConfiguration = extractAllBeds(seg);
-        upsertRoom(nameMatch[0], bedConfiguration);
+      } else {
+        // Image-carousel layout: each room is an li[data-key] card.
+        const roomCards = await sleepSection.$$("li[data-key]");
+        logger.info(
+          "AirbnbScanner",
+          `Found ${roomCards.length} structured room cards`,
+        );
+
+        for (const card of roomCards) {
+          try {
+            const keyName = normalize(
+              (await card.getAttribute("data-key")) || "",
+            );
+
+            let name = keyName;
+            if (!name) {
+              const nameEl = await card.$(
+                '[aria-label*="Bedroom" i], [aria-label*="Living room" i], div',
+              );
+              name = normalize((await nameEl?.textContent()) || "");
+            }
+
+            let bedText = "";
+            const bedEl = await card.$(
+              '[aria-label*="bed" i], [aria-label*="sofa" i], p, span, div',
+            );
+            bedText = normalize((await bedEl?.textContent()) || "");
+
+            if (!isBedText(bedText)) {
+              const cardText = normalize((await card.textContent()) || "");
+              const bedMatch = cardText.match(
+                /(\d+\s*(king|queen|double|single|sofa\s*bed|sofa|couch|futon|bunk)\s*(bed|beds)?)/i,
+              );
+              bedText = bedMatch ? normalize(bedMatch[0]) : "";
+            }
+
+            let photoUrl: string | undefined;
+            const imgEl = await card.$("img, picture img");
+            if (imgEl) {
+              photoUrl =
+                (await imgEl.getAttribute("data-original-uri")) ||
+                (await imgEl.getAttribute("src")) ||
+                undefined;
+              if (!photoUrl) {
+                const srcset = await imgEl.getAttribute("srcset");
+                if (srcset) {
+                  const last = srcset
+                    .split(",")
+                    .map((s: string) => s.trim())
+                    .pop();
+                  photoUrl = last ? last.split(" ")[0] : undefined;
+                }
+              }
+            }
+
+            if (!photoUrl) {
+              const sourceEl = await card.$("picture source[srcset]");
+              if (sourceEl) {
+                const srcset = await sourceEl.getAttribute("srcset");
+                if (srcset) {
+                  const last = srcset
+                    .split(",")
+                    .map((s: string) => s.trim())
+                    .pop();
+                  photoUrl = last ? last.split(" ")[0] : undefined;
+                }
+              }
+            }
+
+            if (name) {
+              upsertRoom(name, bedText, photoUrl);
+            }
+          } catch (e) {
+            logger.info(
+              "AirbnbScanner",
+              "Error extracting structured room card:",
+              e,
+            );
+          }
+        }
       }
     }
- 
+
     const rooms = Array.from(roomByName.values());
     logger.info("AirbnbScanner", `Extracted ${rooms.length} rooms total`);
- 
+
     return {
-      hasSection: true,
+      hasSection: rooms.length > 0,
       data: rooms.length > 0 ? { rooms } : undefined,
->>>>>>> Stashed changes
     };
   } catch (error) {
     logger.error(
@@ -1223,22 +871,12 @@ export async function scanAirbnbListing(
 
     logger.info("AirbnbScanner", "Extracting data...");
 
-<<<<<<< Updated upstream
     // Run non-navigating extractions in parallel first
     const [sleepResult, isSuperhost, guestFavoriteTier] = await Promise.all([
       extractWhereYoullSleep(page),
       extractSuperHostStatus(page),
       extractGuestFavoriteTier(page),
     ]);
-=======
-    const [sleepResult, isSuperhost, guestFavoriteTier, hostProfile] =
-      await Promise.all([
-        extractWhereYoullSleep(page),
-        extractSuperHostStatus(page),
-        extractGuestFavoriteTier(page),
-        extractHostProfile(page),
-      ]);
->>>>>>> Stashed changes
 
     // Run host profile LAST — it may call page.goto() to navigate to the host profile page,
     // which would destroy the context of any concurrent extractor still running on the listing page.
