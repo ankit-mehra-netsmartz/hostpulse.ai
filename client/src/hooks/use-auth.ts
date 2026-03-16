@@ -49,3 +49,54 @@ export function useAuth() {
     isLoggingOut: logoutMutation.isPending,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Email / password helpers (used by LoginForm and SignupForm)
+// ---------------------------------------------------------------------------
+
+export interface EmailSignupPayload {
+  email: string;
+  password: string;
+  name: string;
+}
+
+export interface EmailLoginPayload {
+  email: string;
+  password: string;
+}
+
+async function postJson(url: string, body: object) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message ?? "Request failed");
+  }
+  return data;
+}
+
+export function useSignupWithEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: EmailSignupPayload) =>
+      postJson("/api/auth/signup", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    },
+  });
+}
+
+export function useLoginWithEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: EmailLoginPayload) =>
+      postJson("/api/auth/login", payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    },
+  });
+}

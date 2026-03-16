@@ -1,5 +1,13 @@
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, timestamp, varchar, text } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  timestamp,
+  varchar,
+  text,
+} from "drizzle-orm/pg-core";
 
 // User roles
 export const USER_ROLES = {
@@ -9,7 +17,7 @@ export const USER_ROLES = {
   USER_STAFF: "user_staff",
 } as const;
 
-export type UserRole = typeof USER_ROLES[keyof typeof USER_ROLES];
+export type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES];
 
 // Session storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
@@ -20,7 +28,7 @@ export const sessions = pgTable(
     sess: jsonb("sess").notNull(),
     expire: timestamp("expire").notNull(),
   },
-  (table) => [index("IDX_session_expire").on(table.expire)]
+  (table) => [index("IDX_session_expire").on(table.expire)],
 );
 
 // Account type for tracking how user signed up
@@ -32,12 +40,14 @@ export const ACCOUNT_TYPES = {
   UNKNOWN: "unknown",
 } as const;
 
-export type AccountType = typeof ACCOUNT_TYPES[keyof typeof ACCOUNT_TYPES];
+export type AccountType = (typeof ACCOUNT_TYPES)[keyof typeof ACCOUNT_TYPES];
 
 // User storage table.
 // (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   email: varchar("email").unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
@@ -47,6 +57,8 @@ export const users = pgTable("users", {
   bio: text("bio"),
   role: varchar("role").notNull().default("user_staff"),
   accountType: varchar("account_type").notNull().default("unknown"),
+  passwordHash: varchar("password_hash"),
+  emailVerified: boolean("email_verified").notNull().default(false),
   defaultWorkspaceId: varchar("default_workspace_id"),
   timezone: varchar("timezone").default("America/New_York"),
   lastLoginAt: timestamp("last_login_at"),
@@ -62,7 +74,7 @@ export const SONG_STATUS = {
   FAILED: "failed",
 } as const;
 
-export type SongStatus = typeof SONG_STATUS[keyof typeof SONG_STATUS];
+export type SongStatus = (typeof SONG_STATUS)[keyof typeof SONG_STATUS];
 
 // Song type enum
 export const SONG_TYPE = {
@@ -70,11 +82,13 @@ export const SONG_TYPE = {
   WORST_GUEST: "worst_guest",
 } as const;
 
-export type SongType = typeof SONG_TYPE[keyof typeof SONG_TYPE];
+export type SongType = (typeof SONG_TYPE)[keyof typeof SONG_TYPE];
 
 // User songs table for Easter Egg feature
 export const userSongs = pgTable("user_songs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
   songType: varchar("song_type").notNull(),
@@ -96,7 +110,9 @@ export type InsertUserSong = typeof userSongs.$inferInsert;
 
 // AI Prompts table for storing editable prompts
 export const aiPrompts = pgTable("ai_prompts", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   name: varchar("name").notNull().unique(),
   description: text("description"),
   promptTemplate: text("prompt_template").notNull(),
@@ -124,7 +140,8 @@ export const PROPERTY_MANAGEMENT_SOFTWARE = {
   OTHER: "other",
 } as const;
 
-export type PropertyManagementSoftware = typeof PROPERTY_MANAGEMENT_SOFTWARE[keyof typeof PROPERTY_MANAGEMENT_SOFTWARE];
+export type PropertyManagementSoftware =
+  (typeof PROPERTY_MANAGEMENT_SOFTWARE)[keyof typeof PROPERTY_MANAGEMENT_SOFTWARE];
 
 // Workspace roles
 export const WORKSPACE_ROLES = {
@@ -133,7 +150,8 @@ export const WORKSPACE_ROLES = {
   MEMBER: "member",
 } as const;
 
-export type WorkspaceRole = typeof WORKSPACE_ROLES[keyof typeof WORKSPACE_ROLES];
+export type WorkspaceRole =
+  (typeof WORKSPACE_ROLES)[keyof typeof WORKSPACE_ROLES];
 
 // Workspace member status
 export const WORKSPACE_MEMBER_STATUS = {
@@ -141,11 +159,14 @@ export const WORKSPACE_MEMBER_STATUS = {
   INVITED: "invited",
 } as const;
 
-export type WorkspaceMemberStatus = typeof WORKSPACE_MEMBER_STATUS[keyof typeof WORKSPACE_MEMBER_STATUS];
+export type WorkspaceMemberStatus =
+  (typeof WORKSPACE_MEMBER_STATUS)[keyof typeof WORKSPACE_MEMBER_STATUS];
 
 // Workspaces table
 export const workspaces = pgTable("workspaces", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   name: varchar("name").notNull(),
   propertyManagementSoftware: varchar("property_management_software").notNull(),
   customSoftwareName: varchar("custom_software_name"),
@@ -157,7 +178,9 @@ export const workspaces = pgTable("workspaces", {
 
 // Workspace members table
 export const workspaceMembers = pgTable("workspace_members", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   userId: varchar("user_id"),
   role: varchar("role").notNull().default("member"),
@@ -176,7 +199,9 @@ export type InsertWorkspaceMember = typeof workspaceMembers.$inferInsert;
 // Role permissions table for controlling navigation access by role
 // Only user_manager and user_staff roles are controlled; app_admin and admin_user have full access
 export const rolePermissions = pgTable("role_permissions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   role: varchar("role").notNull(), // user_manager, user_staff
   navItemId: varchar("nav_item_id").notNull(), // matches NavItem.id in sidebar
   enabled: varchar("enabled").notNull().default("true"), // "true" or "false"
@@ -189,7 +214,9 @@ export type InsertRolePermission = typeof rolePermissions.$inferInsert;
 
 // Profile photo history table for tracking saved profile pictures
 export const profilePhotoHistory = pgTable("profile_photo_history", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   imageUrl: text("image_url").notNull(),
   createdAt: timestamp("created_at").defaultNow(),

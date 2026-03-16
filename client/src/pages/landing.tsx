@@ -1,12 +1,21 @@
+import { useState } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { 
-  BarChart3, 
-  Sparkles, 
-  TrendingUp, 
-  Building2, 
-  Shield, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { LoginForm } from "@/components/LoginForm";
+import { SignupForm } from "@/components/SignupForm";
+import {
+  BarChart3,
+  Sparkles,
+  TrendingUp,
+  Building2,
+  Shield,
   Zap,
   Tags,
   CheckSquare,
@@ -26,11 +35,23 @@ import {
   DollarSign,
   Activity,
   FileText,
-  AlertTriangle
+  AlertTriangle,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 export default function Landing() {
+  const [authModal, setAuthModal] = useState<"login" | "signup" | null>(null);
+
+  function openSignup() {
+    setAuthModal("signup");
+  }
+  function openLogin() {
+    setAuthModal("login");
+  }
+  function closeModal() {
+    setAuthModal(null);
+  }
+
   function handleLoginClick() {
     window.location.href = "/auth/google";
   }
@@ -42,40 +63,69 @@ export default function Landing() {
           <div className="flex items-center justify-between gap-4 h-16">
             <div className="flex items-center gap-2">
               <a href="#" className="flex items-center gap-2">
-                <img 
-                  src="/logo-light.png" 
-                  alt="HostPulse" 
-                  className="h-7 dark:hidden" 
+                <img
+                  src="/logo-light.png"
+                  alt="HostPulse"
+                  className="h-7 dark:hidden"
                 />
-                <img 
-                  src="/favicon.png" 
-                  alt="HostPulse" 
-                  className="h-7 hidden dark:block" 
+                <img
+                  src="/favicon.png"
+                  alt="HostPulse"
+                  className="h-7 hidden dark:block"
                 />
-                <span className="text-xl font-semibold dark:block hidden">HostPulse</span>
+                <span className="text-xl font-semibold dark:block hidden">
+                  HostPulse
+                </span>
               </a>
             </div>
             <div className="hidden md:flex items-center gap-6">
-              <a href="#why-hostpulse" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-why">
+              <a
+                href="#why-hostpulse"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="nav-why"
+              >
                 Why HostPulse
               </a>
-              <a href="#ai-agents" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-ai-agents">
+              <a
+                href="#ai-agents"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="nav-ai-agents"
+              >
                 AI Agents
               </a>
-              <a href="#features" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-features">
+              <a
+                href="#features"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="nav-features"
+              >
                 Features
               </a>
-              <a href="#who-its-for" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-who-its-for">
+              <a
+                href="#who-its-for"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="nav-who-its-for"
+              >
                 Who It's For
               </a>
-              <a href="#pricing" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="nav-pricing">
+              <a
+                href="#pricing"
+                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="nav-pricing"
+              >
                 Pricing
               </a>
             </div>
             <div className="flex items-center gap-2">
               <ThemeToggle />
-              <Button onClick={handleLoginClick} data-testid="button-login">
-                Sign in with Google
+              <Button
+                variant="ghost"
+                onClick={openLogin}
+                data-testid="button-login"
+              >
+                Sign in
+              </Button>
+              <Button onClick={openSignup} data-testid="button-get-started-nav">
+                Get Started
               </Button>
             </div>
           </div>
@@ -98,15 +148,25 @@ export default function Landing() {
                     <span className="text-primary">Guests Satisfied</span>
                   </h1>
                   <p className="text-lg text-muted-foreground max-w-lg">
-                    The complete operating system for short-term rental hosts. AI agents that analyze listings, 
-                    fight unfair reviews, challenge bad resolutions, and gather guest feedback automatically.
+                    The complete operating system for short-term rental hosts.
+                    AI agents that analyze listings, fight unfair reviews,
+                    challenge bad resolutions, and gather guest feedback
+                    automatically.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-4">
-                  <Button size="lg" onClick={handleLoginClick} data-testid="button-get-started">
+                  <Button
+                    size="lg"
+                    onClick={openSignup}
+                    data-testid="button-get-started"
+                  >
                     Start Free
                   </Button>
-                  <Button size="lg" variant="outline" data-testid="button-learn-more">
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    data-testid="button-learn-more"
+                  >
                     <a href="#ai-agents">See AI Agents</a>
                   </Button>
                 </div>
@@ -126,34 +186,54 @@ export default function Landing() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="font-semibold">Property Overview</h3>
-                      <span className="text-sm text-muted-foreground">AI Analyzed</span>
+                      <span className="text-sm text-muted-foreground">
+                        AI Analyzed
+                      </span>
                     </div>
                     <div className="flex items-center gap-4">
                       <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-                        <span className="text-3xl font-bold text-primary">4.8</span>
+                        <span className="text-3xl font-bold text-primary">
+                          4.8
+                        </span>
                       </div>
                       <div>
                         <p className="font-medium">Guest Satisfaction</p>
-                        <p className="text-sm text-muted-foreground">Excellent performance</p>
+                        <p className="text-sm text-muted-foreground">
+                          Excellent performance
+                        </p>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div className="p-3 rounded-lg bg-emerald-500/10 text-center">
-                        <div className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">12</div>
-                        <div className="text-xs text-muted-foreground">Tasks</div>
+                        <div className="text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+                          12
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Tasks
+                        </div>
                       </div>
                       <div className="p-3 rounded-lg bg-blue-500/10 text-center">
-                        <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">8</div>
-                        <div className="text-xs text-muted-foreground">Themes</div>
+                        <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                          8
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Themes
+                        </div>
                       </div>
                       <div className="p-3 rounded-lg bg-purple-500/10 text-center">
-                        <div className="text-lg font-semibold text-purple-600 dark:text-purple-400">45</div>
-                        <div className="text-xs text-muted-foreground">Tags</div>
+                        <div className="text-lg font-semibold text-purple-600 dark:text-purple-400">
+                          45
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Tags
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10">
                       <Lightbulb className="w-5 h-5 text-amber-500" />
-                      <span className="text-sm">Ask Lumi: "What do guests love most?"</span>
+                      <span className="text-sm">
+                        Ask Lumi: "What do guests love most?"
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -173,7 +253,8 @@ export default function Landing() {
                 Keep Your Finger on the Pulse
               </h2>
               <p className="text-lg text-muted-foreground max-w-3xl mx-auto">
-                The foundation of HostPulse is having a pulse on three things: your Listing, your Property, and your Guests.
+                The foundation of HostPulse is having a pulse on three things:
+                your Listing, your Property, and your Guests.
               </p>
             </div>
 
@@ -184,7 +265,8 @@ export default function Landing() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Your Listing</h3>
                 <p className="text-sm text-muted-foreground">
-                  How your property appears online - photos, descriptions, amenities, and pricing that attract guests.
+                  How your property appears online - photos, descriptions,
+                  amenities, and pricing that attract guests.
                 </p>
               </Card>
               <Card className="p-6 text-center">
@@ -193,7 +275,8 @@ export default function Landing() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Your Property</h3>
                 <p className="text-sm text-muted-foreground">
-                  The physical space - the real experience guests have when they stay with you.
+                  The physical space - the real experience guests have when they
+                  stay with you.
                 </p>
               </Card>
               <Card className="p-6 text-center">
@@ -202,52 +285,71 @@ export default function Landing() {
                 </div>
                 <h3 className="text-lg font-semibold mb-2">Your Guests</h3>
                 <p className="text-sm text-muted-foreground">
-                  The feedback they give - in conversations, public reviews, and private remarks.
+                  The feedback they give - in conversations, public reviews, and
+                  private remarks.
                 </p>
               </Card>
             </div>
 
             <div className="grid lg:grid-cols-2 gap-16 items-center">
               <div className="space-y-6">
-                <h3 className="text-2xl font-bold">The Problem: Feedback Gets Buried</h3>
+                <h3 className="text-2xl font-bold">
+                  The Problem: Feedback Gets Buried
+                </h3>
                 <p className="text-muted-foreground">
-                  Guest feedback is buried in conversation threads, public reviews, and private remarks. 
-                  But you're so focused on current reservations and putting out fires that you rarely 
-                  have time to reflect on this feedback or spot the trends that need attention.
+                  Guest feedback is buried in conversation threads, public
+                  reviews, and private remarks. But you're so focused on current
+                  reservations and putting out fires that you rarely have time
+                  to reflect on this feedback or spot the trends that need
+                  attention.
                 </p>
                 <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20">
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="font-medium text-red-600 dark:text-red-400">The Hidden Risk</p>
+                      <p className="font-medium text-red-600 dark:text-red-400">
+                        The Hidden Risk
+                      </p>
                       <p className="text-sm text-muted-foreground mt-1">
-                        Most guests are understanding about small issues. But that same persistent problem 
-                        might annoy one guest enough to leave a very negative review. A single bad review 
-                        can set your listing back months and cause a <strong>20-30% decrease in revenue</strong>.
+                        Most guests are understanding about small issues. But
+                        that same persistent problem might annoy one guest
+                        enough to leave a very negative review. A single bad
+                        review can set your listing back months and cause a{" "}
+                        <strong>20-30% decrease in revenue</strong>.
                       </p>
                     </div>
                   </div>
                 </div>
               </div>
               <div className="space-y-6">
-                <h3 className="text-2xl font-bold">The Solution: Automated Insights</h3>
+                <h3 className="text-2xl font-bold">
+                  The Solution: Automated Insights
+                </h3>
                 <p className="text-muted-foreground">
-                  HostPulse automates the insights your guests give you. It also proactively 
-                  reaches out to guests for detailed feedback in longer form format, then breaks 
-                  that feedback into actionable insights and tasks.
+                  HostPulse automates the insights your guests give you. It also
+                  proactively reaches out to guests for detailed feedback in
+                  longer form format, then breaks that feedback into actionable
+                  insights and tasks.
                 </p>
                 <div className="space-y-3">
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10">
                     <Check className="w-5 h-5 text-emerald-500" />
-                    <span className="text-sm">Automatically extracts insights from every guest interaction</span>
+                    <span className="text-sm">
+                      Automatically extracts insights from every guest
+                      interaction
+                    </span>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10">
                     <Check className="w-5 h-5 text-emerald-500" />
-                    <span className="text-sm">Proactively reaches out for detailed guest feedback</span>
+                    <span className="text-sm">
+                      Proactively reaches out for detailed guest feedback
+                    </span>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10">
                     <Check className="w-5 h-5 text-emerald-500" />
-                    <span className="text-sm">Converts feedback into actionable tasks with priorities</span>
+                    <span className="text-sm">
+                      Converts feedback into actionable tasks with priorities
+                    </span>
                   </div>
                 </div>
               </div>
@@ -260,23 +362,32 @@ export default function Landing() {
                     <TrendingUp className="w-4 h-4" />
                     Measure Impact
                   </div>
-                  <h3 className="text-2xl font-bold">See the Results of Your Actions</h3>
+                  <h3 className="text-2xl font-bold">
+                    See the Results of Your Actions
+                  </h3>
                   <p className="text-muted-foreground">
-                    HostPulse shows the IMPACT of creating tasks from feedback and completing them. 
-                    Watch how addressing issues leads to reduction or stabilization of that type 
-                    of feedback over time. No more guessing if your improvements are working.
+                    HostPulse shows the IMPACT of creating tasks from feedback
+                    and completing them. Watch how addressing issues leads to
+                    reduction or stabilization of that type of feedback over
+                    time. No more guessing if your improvements are working.
                   </p>
                 </div>
                 <div className="rounded-xl border bg-card p-6 shadow-lg">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-semibold">Impact Tracking</h4>
-                    <span className="text-xs text-muted-foreground">Last 90 days</span>
+                    <span className="text-xs text-muted-foreground">
+                      Last 90 days
+                    </span>
                   </div>
                   <div className="space-y-4">
                     <div>
                       <div className="flex items-center justify-between text-sm mb-2">
-                        <span className="text-muted-foreground">"Check-in confusion"</span>
-                        <span className="text-emerald-500 font-medium">-67%</span>
+                        <span className="text-muted-foreground">
+                          "Check-in confusion"
+                        </span>
+                        <span className="text-emerald-500 font-medium">
+                          -67%
+                        </span>
                       </div>
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
                         <div className="h-full w-1/3 bg-emerald-500 rounded-full" />
@@ -284,8 +395,12 @@ export default function Landing() {
                     </div>
                     <div>
                       <div className="flex items-center justify-between text-sm mb-2">
-                        <span className="text-muted-foreground">"WiFi issues"</span>
-                        <span className="text-emerald-500 font-medium">-85%</span>
+                        <span className="text-muted-foreground">
+                          "WiFi issues"
+                        </span>
+                        <span className="text-emerald-500 font-medium">
+                          -85%
+                        </span>
                       </div>
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
                         <div className="h-full w-[15%] bg-emerald-500 rounded-full" />
@@ -293,8 +408,12 @@ export default function Landing() {
                     </div>
                     <div>
                       <div className="flex items-center justify-between text-sm mb-2">
-                        <span className="text-muted-foreground">"Parking unclear"</span>
-                        <span className="text-amber-500 font-medium">Stable</span>
+                        <span className="text-muted-foreground">
+                          "Parking unclear"
+                        </span>
+                        <span className="text-amber-500 font-medium">
+                          Stable
+                        </span>
                       </div>
                       <div className="h-2 rounded-full bg-muted overflow-hidden">
                         <div className="h-full w-1/2 bg-amber-500 rounded-full" />
@@ -321,7 +440,8 @@ export default function Landing() {
                 Your Team of AI Specialists
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Powerful AI agents working around the clock to protect your business and maximize guest satisfaction
+                Powerful AI agents working around the clock to protect your
+                business and maximize guest satisfaction
               </p>
             </div>
             <div className="grid md:grid-cols-2 gap-8">
@@ -333,14 +453,24 @@ export default function Landing() {
                   <div className="space-y-3">
                     <h3 className="text-xl font-semibold">Listing Analysis</h3>
                     <p className="text-muted-foreground">
-                      Deep analysis of your listings across 15+ categories including photos, descriptions, 
-                      amenities, reviews, and guest experience. Get actionable insights to improve your ratings and bookings.
+                      Deep analysis of your listings across 15+ categories
+                      including photos, descriptions, amenities, reviews, and
+                      guest experience. Get actionable insights to improve your
+                      ratings and bookings.
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">Photos</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">Reviews</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">Amenities</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">Pricing</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                        Photos
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                        Reviews
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                        Amenities
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                        Pricing
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -354,13 +484,21 @@ export default function Landing() {
                   <div className="space-y-3">
                     <h3 className="text-xl font-semibold">Review Removal</h3>
                     <p className="text-muted-foreground">
-                      Analyzes guest reviews for policy violations and assigns a removal likelihood score. 
-                      Writes professional removal challenges, handles appeals, and drafts arbitration letters if needed.
+                      Analyzes guest reviews for policy violations and assigns a
+                      removal likelihood score. Writes professional removal
+                      challenges, handles appeals, and drafts arbitration
+                      letters if needed.
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <span className="text-xs px-2 py-1 rounded-full bg-red-500/10 text-red-600 dark:text-red-400">% Likelihood Score</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-red-500/10 text-red-600 dark:text-red-400">Challenge Writing</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-red-500/10 text-red-600 dark:text-red-400">Arbitration</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
+                        % Likelihood Score
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
+                        Challenge Writing
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-red-500/10 text-red-600 dark:text-red-400">
+                        Arbitration
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -372,15 +510,25 @@ export default function Landing() {
                     <Scale className="w-7 h-7 text-white" />
                   </div>
                   <div className="space-y-3">
-                    <h3 className="text-xl font-semibold">Resolution Reversal</h3>
+                    <h3 className="text-xl font-semibold">
+                      Resolution Reversal
+                    </h3>
                     <p className="text-muted-foreground">
-                      When Airbnb sides with a guest unfairly for refunds or cancellations, this agent fights back. 
-                      Analyzes the case, writes appeals, and pursues arbitration when your rights are violated.
+                      When Airbnb sides with a guest unfairly for refunds or
+                      cancellations, this agent fights back. Analyzes the case,
+                      writes appeals, and pursues arbitration when your rights
+                      are violated.
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <span className="text-xs px-2 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">Case Analysis</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">Appeal Writing</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">Arbitration</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                        Case Analysis
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                        Appeal Writing
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-purple-500/10 text-purple-600 dark:text-purple-400">
+                        Arbitration
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -394,13 +542,21 @@ export default function Landing() {
                   <div className="space-y-3">
                     <h3 className="text-xl font-semibold">Nudge</h3>
                     <p className="text-muted-foreground">
-                      Proactively reaches out to guests via SMS for feedback on their stay. Mitigates potential bad reviews 
-                      while gathering detailed insights. The best feedback often comes from your happiest guests.
+                      Proactively reaches out to guests via SMS for feedback on
+                      their stay. Mitigates potential bad reviews while
+                      gathering detailed insights. The best feedback often comes
+                      from your happiest guests.
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">SMS Outreach</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Review Prevention</span>
-                      <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Feedback Collection</span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        SMS Outreach
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        Review Prevention
+                      </span>
+                      <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        Feedback Collection
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -416,7 +572,8 @@ export default function Landing() {
                 Your Complete Property OS
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Everything you need to analyze, improve, and manage your short-term rentals
+                Everything you need to analyze, improve, and manage your
+                short-term rentals
               </p>
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -424,42 +581,50 @@ export default function Landing() {
                 {
                   icon: Tags,
                   title: "Smart Tags",
-                  description: "AI automatically creates tags from guest interactions, tracking what matters most to your guests."
+                  description:
+                    "AI automatically creates tags from guest interactions, tracking what matters most to your guests.",
                 },
                 {
                   icon: Layers,
                   title: "Theme Discovery",
-                  description: "Tags are grouped into themes to reveal patterns like cleanliness concerns or check-in issues."
+                  description:
+                    "Tags are grouped into themes to reveal patterns like cleanliness concerns or check-in issues.",
                 },
                 {
                   icon: CheckSquare,
                   title: "Actionable Tasks",
-                  description: "AI-generated tasks with prioritization to focus on improvements that drive the biggest impact."
+                  description:
+                    "AI-generated tasks with prioritization to focus on improvements that drive the biggest impact.",
                 },
                 {
                   icon: Lightbulb,
                   title: "Ask Lumi",
-                  description: "Your AI research assistant (short for Illumination). Ask questions and get instant insights."
+                  description:
+                    "Your AI research assistant (short for Illumination). Ask questions and get instant insights.",
                 },
                 {
                   icon: MessageSquare,
                   title: "Conversation Insights",
-                  description: "Analyze guest conversations to uncover patterns, common requests, and improvement opportunities."
+                  description:
+                    "Analyze guest conversations to uncover patterns, common requests, and improvement opportunities.",
                 },
                 {
                   icon: TrendingUp,
                   title: "Performance Tracking",
-                  description: "Monitor trends over time and measure the impact of your improvements across all properties."
-                }
+                  description:
+                    "Monitor trends over time and measure the impact of your improvements across all properties.",
+                },
               ].map((feature, i) => (
-                <div 
-                  key={i} 
+                <div
+                  key={i}
                   className="group rounded-xl border bg-card p-6 hover-elevate"
                 >
                   <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                     <feature.icon className="w-6 h-6 text-primary" />
                   </div>
-                  <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+                  <h3 className="text-lg font-semibold mb-2">
+                    {feature.title}
+                  </h3>
                   <p className="text-muted-foreground">{feature.description}</p>
                 </div>
               ))}
@@ -479,17 +644,22 @@ export default function Landing() {
                   Your AI Research Assistant
                 </h2>
                 <p className="text-lg text-muted-foreground">
-                  Ask Lumi (short for Illumination) is your intelligent companion for exploring your property data. 
-                  Ask questions in plain English and get instant insights from your reviews, reservations, and guest feedback.
+                  Ask Lumi (short for Illumination) is your intelligent
+                  companion for exploring your property data. Ask questions in
+                  plain English and get instant insights from your reviews,
+                  reservations, and guest feedback.
                 </p>
                 <ul className="space-y-3">
                   {[
                     "What are guests saying about cleanliness?",
                     "Which properties have the best reviews?",
                     "What improvements would increase my ratings?",
-                    "Show me trends in guest satisfaction over time"
+                    "Show me trends in guest satisfaction over time",
                   ].map((question, i) => (
-                    <li key={i} className="flex items-center gap-3 text-muted-foreground">
+                    <li
+                      key={i}
+                      className="flex items-center gap-3 text-muted-foreground"
+                    >
                       <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                         <MessageSquare className="w-3 h-3 text-primary" />
                       </div>
@@ -506,27 +676,41 @@ export default function Landing() {
                     </div>
                     <div>
                       <h4 className="font-semibold">Ask Lumi</h4>
-                      <p className="text-sm text-muted-foreground">AI Research Assistant</p>
+                      <p className="text-sm text-muted-foreground">
+                        AI Research Assistant
+                      </p>
                     </div>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-4">
-                    <p className="text-sm text-muted-foreground mb-2">You asked:</p>
-                    <p className="font-medium">"What do guests love most about my properties?"</p>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      You asked:
+                    </p>
+                    <p className="font-medium">
+                      "What do guests love most about my properties?"
+                    </p>
                   </div>
                   <div className="space-y-3">
-                    <p className="text-sm">Based on analyzing 142 reviews across your 5 properties:</p>
+                    <p className="text-sm">
+                      Based on analyzing 142 reviews across your 5 properties:
+                    </p>
                     <ul className="text-sm space-y-2">
                       <li className="flex items-start gap-2">
                         <span className="text-emerald-500 mt-0.5">1.</span>
-                        <span><strong>Location</strong> - 89% positive mentions</span>
+                        <span>
+                          <strong>Location</strong> - 89% positive mentions
+                        </span>
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="text-emerald-500 mt-0.5">2.</span>
-                        <span><strong>Cleanliness</strong> - 85% positive mentions</span>
+                        <span>
+                          <strong>Cleanliness</strong> - 85% positive mentions
+                        </span>
                       </li>
                       <li className="flex items-start gap-2">
                         <span className="text-emerald-500 mt-0.5">3.</span>
-                        <span><strong>Communication</strong> - 82% positive mentions</span>
+                        <span>
+                          <strong>Communication</strong> - 82% positive mentions
+                        </span>
                       </li>
                     </ul>
                   </div>
@@ -543,7 +727,8 @@ export default function Landing() {
                 Built For Hosts Like You
               </h2>
               <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                Whether you're managing your own rentals or helping others succeed, HostPulse is designed for you
+                Whether you're managing your own rentals or helping others
+                succeed, HostPulse is designed for you
               </p>
             </div>
             <div className="grid md:grid-cols-3 gap-8">
@@ -553,8 +738,9 @@ export default function Landing() {
                 </div>
                 <h3 className="text-xl font-semibold mb-3">Self Managers</h3>
                 <p className="text-muted-foreground">
-                  Managing your own vacation rentals? Get the same powerful AI tools that big property managers use. 
-                  Protect your reviews, improve your listings, and maximize your income.
+                  Managing your own vacation rentals? Get the same powerful AI
+                  tools that big property managers use. Protect your reviews,
+                  improve your listings, and maximize your income.
                 </p>
               </Card>
 
@@ -562,10 +748,13 @@ export default function Landing() {
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/20 to-purple-600/20 flex items-center justify-center mx-auto mb-6">
                   <Briefcase className="w-8 h-8 text-purple-600 dark:text-purple-400" />
                 </div>
-                <h3 className="text-xl font-semibold mb-3">Property Managers</h3>
+                <h3 className="text-xl font-semibold mb-3">
+                  Property Managers
+                </h3>
                 <p className="text-muted-foreground">
-                  Managing properties for others? Scale your operations with AI-powered quality control. 
-                  Keep owners happy with data-driven insights and protect their investment.
+                  Managing properties for others? Scale your operations with
+                  AI-powered quality control. Keep owners happy with data-driven
+                  insights and protect their investment.
                 </p>
               </Card>
 
@@ -573,10 +762,13 @@ export default function Landing() {
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-emerald-600/20 flex items-center justify-center mx-auto mb-6">
                   <GraduationCap className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <h3 className="text-xl font-semibold mb-3">Coaches & Masterminds</h3>
+                <h3 className="text-xl font-semibold mb-3">
+                  Coaches & Masterminds
+                </h3>
                 <p className="text-muted-foreground">
-                  Leading an STR coaching program or mastermind? Give your members deeper insights with AI analysis. 
-                  Help them succeed faster with data-backed recommendations.
+                  Leading an STR coaching program or mastermind? Give your
+                  members deeper insights with AI analysis. Help them succeed
+                  faster with data-backed recommendations.
                 </p>
               </Card>
             </div>
@@ -593,7 +785,7 @@ export default function Landing() {
                 Start free, scale as you grow. No contracts, no hidden fees.
               </p>
             </div>
-            
+
             <div className="max-w-4xl mx-auto">
               <div className="grid md:grid-cols-2 gap-8">
                 <Card className="p-8 relative overflow-hidden">
@@ -603,7 +795,9 @@ export default function Landing() {
                   <div className="space-y-6">
                     <div>
                       <h3 className="text-2xl font-bold">Free Forever</h3>
-                      <p className="text-muted-foreground">Your first property</p>
+                      <p className="text-muted-foreground">
+                        Your first property
+                      </p>
                     </div>
                     <div className="flex items-baseline gap-1">
                       <span className="text-5xl font-bold">$0</span>
@@ -616,7 +810,7 @@ export default function Landing() {
                         "Ask Lumi research assistant",
                         "Tags, Themes & Tasks",
                         "Team collaboration",
-                        "No credit card required"
+                        "No credit card required",
                       ].map((item, i) => (
                         <li key={i} className="flex items-center gap-3">
                           <Check className="w-5 h-5 text-emerald-500 flex-shrink-0" />
@@ -624,7 +818,12 @@ export default function Landing() {
                         </li>
                       ))}
                     </ul>
-                    <Button size="lg" className="w-full" onClick={handleLoginClick} data-testid="button-pricing-free">
+                    <Button
+                      size="lg"
+                      className="w-full"
+                      onClick={openSignup}
+                      data-testid="button-pricing-free"
+                    >
                       Get Started Free
                     </Button>
                   </div>
@@ -634,11 +833,15 @@ export default function Landing() {
                   <div className="space-y-6">
                     <div>
                       <h3 className="text-2xl font-bold">Per Property</h3>
-                      <p className="text-muted-foreground">For additional properties</p>
+                      <p className="text-muted-foreground">
+                        For additional properties
+                      </p>
                     </div>
                     <div className="flex items-baseline gap-1">
                       <span className="text-5xl font-bold">$10</span>
-                      <span className="text-muted-foreground">/property/month</span>
+                      <span className="text-muted-foreground">
+                        /property/month
+                      </span>
                     </div>
                     <ul className="space-y-3">
                       {[
@@ -647,7 +850,7 @@ export default function Landing() {
                         "All features included",
                         "Month-to-month, no contract",
                         "Cancel anytime",
-                        "Volume discounts available"
+                        "Volume discounts available",
                       ].map((item, i) => (
                         <li key={i} className="flex items-center gap-3">
                           <Check className="w-5 h-5 text-emerald-500 flex-shrink-0" />
@@ -655,7 +858,13 @@ export default function Landing() {
                         </li>
                       ))}
                     </ul>
-                    <Button size="lg" variant="outline" className="w-full" onClick={handleLoginClick} data-testid="button-pricing-pro">
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="w-full"
+                      onClick={openSignup}
+                      data-testid="button-pricing-pro"
+                    >
                       Start Free, Add Properties Later
                     </Button>
                   </div>
@@ -689,11 +898,15 @@ export default function Landing() {
                 Ready to Transform Your Hosting Business?
               </h2>
               <p className="text-lg text-muted-foreground">
-                Join hosts who are using HostPulse to deliver exceptional guest experiences, 
-                protect their reviews, and grow their revenue.
+                Join hosts who are using HostPulse to deliver exceptional guest
+                experiences, protect their reviews, and grow their revenue.
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Button size="lg" onClick={handleLoginClick} data-testid="button-cta-get-started">
+                <Button
+                  size="lg"
+                  onClick={openSignup}
+                  data-testid="button-cta-get-started"
+                >
                   Get Started for Free
                 </Button>
               </div>
@@ -709,21 +922,24 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <img 
-                src="/logo-light.png" 
-                alt="HostPulse" 
-                className="h-6 dark:hidden" 
+              <img
+                src="/logo-light.png"
+                alt="HostPulse"
+                className="h-6 dark:hidden"
               />
-              <img 
-                src="/favicon.png" 
-                alt="HostPulse" 
-                className="h-6 hidden dark:block" 
+              <img
+                src="/favicon.png"
+                alt="HostPulse"
+                className="h-6 hidden dark:block"
               />
               <span className="font-medium dark:block hidden">HostPulse</span>
             </div>
             <div className="flex items-center gap-4">
               <Link href="/privacy-policy">
-                <span className="text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-testid="link-privacy-policy">
+                <span
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  data-testid="link-privacy-policy"
+                >
                   Privacy Policy
                 </span>
               </Link>
@@ -734,6 +950,29 @@ export default function Landing() {
           </div>
         </div>
       </footer>
+
+      {/* Auth Modal */}
+      <Dialog
+        open={authModal !== null}
+        onOpenChange={(open) => {
+          if (!open) closeModal();
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {authModal === "login"
+                ? "Sign in to HostPulse"
+                : "Create your account"}
+            </DialogTitle>
+          </DialogHeader>
+          {authModal === "login" ? (
+            <LoginForm onSwitchToSignup={() => setAuthModal("signup")} />
+          ) : (
+            <SignupForm onSwitchToLogin={() => setAuthModal("login")} />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
