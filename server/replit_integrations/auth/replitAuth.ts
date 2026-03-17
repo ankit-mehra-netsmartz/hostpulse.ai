@@ -151,3 +151,25 @@ export const isAuthenticated: RequestHandler = (req, res, next) => {
   }
   return res.status(401).json({ message: "Unauthorized" });
 };
+
+/**
+ * Requires the user to be logged in AND have a verified email.
+ * Apply to routes that create or mutate workspace/project data.
+ * Never apply to /api/auth/* routes.
+ * Google OAuth users always pass (emailVerified is true at signup).
+ */
+export const requireEmailVerified: RequestHandler = (req, res, next) => {
+  if (!req.isAuthenticated() || !req.user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  if (
+    (req.user as any).accountType === "email" &&
+    !(req.user as any).emailVerified
+  ) {
+    return res.status(403).json({
+      message: "Email not verified",
+      code: "EMAIL_NOT_VERIFIED",
+    });
+  }
+  return next();
+};

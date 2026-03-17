@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -41,6 +41,34 @@ import { Card } from "@/components/ui/card";
 
 export default function Landing() {
   const [authModal, setAuthModal] = useState<"login" | "signup" | null>(null);
+  const [verifiedMessage, setVerifiedMessage] = useState<{
+    text: string;
+    variant: "success" | "warning" | "error";
+  } | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const verified = params.get("verified");
+    if (verified === "success") {
+      setVerifiedMessage({
+        text: "Your email has been verified! You can now use HostPulse.",
+        variant: "success",
+      });
+    } else if (verified === "expired") {
+      setVerifiedMessage({
+        text: "That verification link has expired. Sign in and request a new one.",
+        variant: "warning",
+      });
+    } else if (verified === "invalid") {
+      setVerifiedMessage({
+        text: "That verification link is invalid or has already been used.",
+        variant: "error",
+      });
+    }
+    if (verified) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   function openSignup() {
     setAuthModal("signup");
@@ -133,6 +161,28 @@ export default function Landing() {
       </nav>
 
       <main className="pt-16">
+        {verifiedMessage && (
+          <div
+            className={[
+              "fixed top-16 inset-x-0 z-40 flex items-center justify-between gap-3 px-4 py-3 text-sm font-medium shadow",
+              verifiedMessage.variant === "success"
+                ? "bg-emerald-600 text-white"
+                : verifiedMessage.variant === "warning"
+                  ? "bg-amber-500 text-white"
+                  : "bg-destructive text-destructive-foreground",
+            ].join(" ")}
+          >
+            <span>{verifiedMessage.text}</span>
+            <button
+              type="button"
+              aria-label="Dismiss"
+              onClick={() => setVerifiedMessage(null)}
+              className="shrink-0 opacity-80 hover:opacity-100 transition-opacity"
+            >
+              ✕
+            </button>
+          </div>
+        )}
         <section className="relative overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-primary/10" />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">

@@ -1,13 +1,97 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useSignupWithEmail } from "@/hooks/use-auth";
+import { useSignupWithEmail, useResendVerification } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Loader2 } from "lucide-react";
+import { Loader2, MailCheck } from "lucide-react";
+
+const RESEND_COOLDOWN = 120;
+
+function PostSignupSuccess({ email }: { email: string }) {
+  const resendMutation = useResendVerification();
+  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN);
+  const [justSent, setJustSent] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  async function handleResend() {
+    setResendError(null);
+    setJustSent(false);
+    try {
+      await resendMutation.mutateAsync();
+      setJustSent(true);
+      setCooldown(RESEND_COOLDOWN);
+    } catch (err: any) {
+      if (err?.status === 429 && err?.retryAfterSeconds) {
+        setCooldown(err.retryAfterSeconds);
+        setResendError(
+          err.message ?? "Please wait before requesting another email.",
+        );
+      } else {
+        setResendError(err?.message ?? "Failed to resend. Please try again.");
+      }
+    }
+  }
+
+  return (
+    <div className="space-y-5 text-center py-2">
+      <div className="flex justify-center">
+        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+          <MailCheck className="w-8 h-8 text-primary" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold">Check your inbox!</h3>
+        <p className="text-sm text-muted-foreground">
+          We sent a verification link to
+        </p>
+        <p className="text-sm font-semibold text-primary break-all">{email}</p>
+        <p className="text-xs text-muted-foreground pt-1">
+          Didn&apos;t get it? Check your spam folder or resend below.
+        </p>
+      </div>
+
+      {justSent && (
+        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+          Email sent! Check your inbox.
+        </div>
+      )}
+      {resendError && !justSent && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {resendError}
+        </div>
+      )}
+
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full"
+        onClick={handleResend}
+        disabled={resendMutation.isPending || cooldown > 0}
+      >
+        {resendMutation.isPending ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Sending…
+          </>
+        ) : cooldown > 0 ? (
+          `Resend in ${cooldown}s`
+        ) : (
+          "Resend verification email"
+        )}
+      </Button>
+    </div>
+  );
+}
 
 const signupSchema = z
   .object({
@@ -67,6 +151,7 @@ interface SignupFormProps {
 export function SignupForm({ onSwitchToLogin }: SignupFormProps) {
   const signupMutation = useSignupWithEmail();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
 
   const {
     register,
@@ -91,9 +176,15 @@ export function SignupForm({ onSwitchToLogin }: SignupFormProps) {
         password: values.password,
         name: values.name,
       });
+      // Don't close modal — show check-your-inbox state instead
+      setSubmittedEmail(values.email);
     } catch (err: any) {
       setServerError(err.message ?? "Signup failed. Please try again.");
     }
+  }
+
+  if (submittedEmail) {
+    return <PostSignupSuccess email={submittedEmail} />;
   }
 
   return (

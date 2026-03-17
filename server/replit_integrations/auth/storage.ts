@@ -1,5 +1,6 @@
 import {
   users,
+  emailVerificationTokens,
   type User,
   type UpsertUser,
   ACCOUNT_TYPES,
@@ -7,6 +8,7 @@ import {
 } from "@shared/models/auth";
 import { db } from "../../db";
 import { eq } from "drizzle-orm";
+import crypto from "crypto";
 
 // Interface for auth storage operations
 // (IMPORTANT) These user operations are mandatory for Replit Auth.
@@ -21,6 +23,14 @@ export interface IAuthStorage {
   ): Promise<User>;
   findUserByEmail(email: string): Promise<User | undefined>;
   updatePassword(userId: string, newPasswordHash: string): Promise<void>;
+  createEmailVerificationToken(userId: string): Promise<string>;
+  verifyEmailToken(
+    token: string,
+  ): Promise<
+    | { success: true; userId: string }
+    | { success: false; reason: "invalid" | "expired" }
+  >;
+  getTokenCreatedAt(userId: string): Promise<Date | null>;
 }
 
 // Helper to detect account type from claims or email
@@ -137,6 +147,63 @@ class AuthStorage implements IAuthStorage {
       .update(users)
       .set({ passwordHash: newPasswordHash, updatedAt: new Date() })
       .where(eq(users.id, userId));
+  }
+
+  async createEmailVerificationToken(userId: string): Promise<string> {
+    // Remove any existing tokens for this user (one active token at a time)
+    await db
+      .delete(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.userId, userId));
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    await db
+      .insert(emailVerificationTokens)
+      .values({ userId, token, expiresAt });
+    return token;
+  }
+
+  async verifyEmailToken(
+    token: string,
+  ): Promise<
+    | { success: true; userId: string }
+    | { success: false; reason: "invalid" | "expired" }
+  > {
+    const [row] = await db
+      .select()
+      .from(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.token, token));
+
+    if (!row) {
+      return { success: false, reason: "invalid" as const };
+    }
+    if (row.expiresAt < new Date()) {
+      await db
+        .delete(emailVerificationTokens)
+        .where(eq(emailVerificationTokens.id, row.id));
+      return { success: false, reason: "expired" as const };
+    }
+
+    // Mark email as verified
+    await db
+      .update(users)
+      .set({ emailVerified: true, updatedAt: new Date() })
+      .where(eq(users.id, row.userId));
+
+    // Consume token (one-time use)
+    await db
+      .delete(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.id, row.id));
+
+    return { success: true, userId: row.userId };
+  }
+
+  async getTokenCreatedAt(userId: string): Promise<Date | null> {
+    const [row] = await db
+      .select({ createdAt: emailVerificationTokens.createdAt })
+      .from(emailVerificationTokens)
+      .where(eq(emailVerificationTokens.userId, userId));
+    return row?.createdAt ?? null;
   }
 }
 

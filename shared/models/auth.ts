@@ -4,6 +4,7 @@ import {
   index,
   jsonb,
   pgTable,
+  serial,
   timestamp,
   varchar,
   text,
@@ -128,6 +129,29 @@ export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
 export type AiPrompt = typeof aiPrompts.$inferSelect;
 export type InsertAiPrompt = typeof aiPrompts.$inferInsert;
+
+// Email verification tokens — email/password users only, never Google OAuth
+export const emailVerificationTokens = pgTable(
+  "email_verification_tokens",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("idx_evt_token").on(table.token),
+    index("idx_evt_user_id").on(table.userId),
+  ],
+);
+
+export type EmailVerificationToken =
+  typeof emailVerificationTokens.$inferSelect;
 
 // Property Management Software options
 export const PROPERTY_MANAGEMENT_SOFTWARE = {

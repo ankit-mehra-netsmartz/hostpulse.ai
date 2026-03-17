@@ -100,3 +100,30 @@ export function useLoginWithEmail() {
     },
   });
 }
+
+export function useResendVerification() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.status === 429) {
+        const data = await res.json();
+        // eslint-disable-next-line @typescript-eslint/no-throw-literal
+        throw {
+          status: 429,
+          retryAfterSeconds: data.retryAfterSeconds,
+          message: data.message,
+        };
+      }
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message ?? "Failed to resend verification email");
+      }
+      return res.json();
+    },
+    // Intentionally not invalidating queryKey here — components manage their own UI state
+  });
+}

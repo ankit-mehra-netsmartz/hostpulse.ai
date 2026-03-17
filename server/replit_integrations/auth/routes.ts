@@ -1,11 +1,13 @@
 import type { Express } from "express";
 import { authStorage } from "./storage";
 import { isAuthenticated } from "./replitAuth";
+import { sendVerificationEmail } from "./emailService";
 import passport from "passport";
 import bcrypt from "bcrypt";
 import { z } from "zod";
 
 const BCRYPT_SALT_ROUNDS = 12;
+const RESEND_COOLDOWN_MS = 120 * 1000; // 2 minutes
 
 const signupSchema = z.object({
   email: z.string().email("Invalid email address"),
@@ -69,18 +71,28 @@ export function registerAuthRoutes(app: Express): void {
         lastName,
       );
 
-      // Auto-login after signup
+      // Issue verification token and send email (non-fatal if email fails)
+      const verifyToken = await authStorage.createEmailVerificationToken(
+        newUser.id,
+      );
+      await sendVerificationEmail(email, name, verifyToken);
+
+      // Auto-login after signup (user is logged in but unverified)
       req.login({ id: newUser.id, email: newUser.email }, (err) => {
         if (err) {
           console.error("[Auth] Login after signup failed:", err);
-          return res
-            .status(500)
-            .json({
-              message:
-                "Signup succeeded but auto-login failed. Please log in manually.",
-            });
+          return res.status(500).json({
+            message:
+              "Signup succeeded but auto-login failed. Please log in manually.",
+          });
         }
-        return res.status(201).json({ user: newUser, isNewUser: true });
+        return res
+          .status(201)
+          .json({
+            user: newUser,
+            isNewUser: true,
+            emailVerificationSent: true,
+          });
       });
     } catch (error) {
       console.error("[Auth] Signup error:", error);
@@ -132,4 +144,75 @@ export function registerAuthRoutes(app: Express): void {
       },
     )(req, res, next);
   });
+
+  // Verify email via token link — no auth required
+  app.get("/api/auth/verify-email", async (req, res) => {
+    const token = req.query.token as string | undefined;
+    if (!token) return res.redirect("/?verified=invalid");
+
+    try {
+      const result = await authStorage.verifyEmailToken(token);
+
+      if (!result.success) {
+        return res.redirect(`/?verified=${result.reason}`);
+      }
+
+      // If the user has an active session for this user, refresh emailVerified in session
+      if (req.isAuthenticated() && (req.user as any)?.id === result.userId) {
+        (req.user as any).emailVerified = true;
+        await new Promise<void>((resolve) => req.session.save(() => resolve()));
+      }
+
+      return res.redirect("/?verified=success");
+    } catch (error) {
+      console.error("[Auth] verify-email error:", error);
+      return res.redirect("/?verified=invalid");
+    }
+  });
+
+  // Resend verification email — requires login
+  app.post(
+    "/api/auth/resend-verification",
+    isAuthenticated,
+    async (req: any, res) => {
+      try {
+        const userId = req.user.id;
+        const user = await authStorage.getUser(userId);
+
+        if (!user) return res.status(404).json({ message: "User not found" });
+        if (user.emailVerified) {
+          return res.status(400).json({ message: "Email already verified" });
+        }
+
+        // Rate-limit: 120s between resend requests
+        const lastCreatedAt = await authStorage.getTokenCreatedAt(userId);
+        if (lastCreatedAt) {
+          const elapsed = Date.now() - lastCreatedAt.getTime();
+          if (elapsed < RESEND_COOLDOWN_MS) {
+            const retryAfterSeconds = Math.ceil(
+              (RESEND_COOLDOWN_MS - elapsed) / 1000,
+            );
+            return res.status(429).json({
+              message: `Please wait before requesting another email`,
+              retryAfterSeconds,
+            });
+          }
+        }
+
+        const token = await authStorage.createEmailVerificationToken(userId);
+        const displayName =
+          [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+          user.email ||
+          "there";
+        await sendVerificationEmail(user.email!, displayName, token);
+
+        return res.json({ sent: true });
+      } catch (error) {
+        console.error("[Auth] resend-verification error:", error);
+        return res
+          .status(500)
+          .json({ message: "Failed to resend verification email." });
+      }
+    },
+  );
 }

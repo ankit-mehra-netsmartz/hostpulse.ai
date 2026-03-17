@@ -5,7 +5,11 @@ import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
-import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  SidebarProvider,
+  SidebarInset,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { useAuth } from "@/hooks/use-auth";
 import { NotificationsProvider } from "@/contexts/notifications-context";
@@ -13,6 +17,7 @@ import { BackgroundAnalysisCard } from "@/components/background-analysis-card";
 import { BackgroundSyncCard } from "@/components/background-sync-card";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { BetaBanner } from "@/components/beta-banner";
+import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { Loader2, GripVertical } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Workspace } from "@shared/schema";
@@ -125,11 +130,17 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
     setIsResizing(true);
   }, []);
 
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isResizing) return;
-    const newWidth = Math.min(Math.max(e.clientX, MIN_SIDEBAR_WIDTH), MAX_SIDEBAR_WIDTH);
-    setSidebarWidth(newWidth);
-  }, [isResizing]);
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isResizing) return;
+      const newWidth = Math.min(
+        Math.max(e.clientX, MIN_SIDEBAR_WIDTH),
+        MAX_SIDEBAR_WIDTH,
+      );
+      setSidebarWidth(newWidth);
+    },
+    [isResizing],
+  );
 
   const handleMouseUp = useCallback(() => {
     setIsResizing(false);
@@ -138,19 +149,19 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   // Add/remove mouse event listeners for resize
   useEffect(() => {
     if (isResizing) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'col-resize';
-      document.body.style.userSelect = 'none';
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
     } else {
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     }
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
     };
   }, [isResizing, handleMouseMove, handleMouseUp]);
 
@@ -177,7 +188,10 @@ function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
             </div>
             <SidebarInset className="flex flex-col flex-1 overflow-hidden">
               <header className="flex items-center gap-2 p-2 border-b h-14 flex-shrink-0">
-                <SidebarTrigger data-testid="button-sidebar-toggle" className="md:hidden" />
+                <SidebarTrigger
+                  data-testid="button-sidebar-toggle"
+                  className="md:hidden"
+                />
                 <ThemeToggle />
                 <div className="flex-1" />
               </header>
@@ -238,8 +252,10 @@ function AuthenticatedRouter() {
 function Router() {
   const { user, isLoading } = useAuth();
   const [location] = useLocation();
-  
-  const { data: workspaces, isLoading: workspacesLoading } = useQuery<Workspace[]>({
+
+  const { data: workspaces, isLoading: workspacesLoading } = useQuery<
+    Workspace[]
+  >({
     queryKey: ["/api/workspaces"],
     enabled: !!user,
   });
@@ -267,14 +283,19 @@ function Router() {
     );
   }
 
+  if (user.accountType === "email" && user.emailVerified === false) {
+    return <EmailVerificationBanner user={user} />;
+  }
+
   // Allow invite page to bypass onboarding for users accepting invitations
   // They'll be added to a workspace after accepting, so they don't need to create one
-  const isOnInvitePage = location.startsWith("/invite/") || location.startsWith("/cleaner-invite/");
-  
+  const isOnInvitePage =
+    location.startsWith("/invite/") || location.startsWith("/cleaner-invite/");
+
   if ((!workspaces || workspaces.length === 0) && !isOnInvitePage) {
     return <Onboarding />;
   }
-  
+
   // For invite pages with no workspaces, render invite page directly
   if (isOnInvitePage && (!workspaces || workspaces.length === 0)) {
     return (
@@ -295,7 +316,10 @@ function Router() {
             <Route path="/mobile/tasks" component={MobileTasks} />
             <Route path="/mobile/tasks/:id" component={MobileTaskDetail} />
             <Route path="/mobile/procedures" component={MobileProcedures} />
-            <Route path="/mobile/procedures/:id" component={MobileProcedureChecklist} />
+            <Route
+              path="/mobile/procedures/:id"
+              component={MobileProcedureChecklist}
+            />
             <Route path="/mobile/profile" component={MobileProfile} />
             <Route path="/mobile/company" component={MobileCompany} />
             <Route component={MobileDashboard} />
