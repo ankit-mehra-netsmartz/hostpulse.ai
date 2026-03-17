@@ -7,53 +7,43 @@ import {
   type AccountType,
 } from "@shared/models/auth";
 import { db } from "../../db";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import crypto from "crypto";
 
 // Interface for auth storage operations
 // (IMPORTANT) These user operations are mandatory for Replit Auth.
 export interface IAuthStorage {
   getUser(id: string): Promise<User | undefined>;
+  findUserById(userId: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser, accountType?: AccountType): Promise<User>;
-  createEmailUser(
-    email: string,
-    passwordHash: string,
-    firstName: string,
-    lastName?: string,
-  ): Promise<User>;
   findUserByEmail(email: string): Promise<User | undefined>;
-  updatePassword(userId: string, newPasswordHash: string): Promise<void>;
-  createEmailVerificationToken(userId: string): Promise<string>;
-  verifyEmailToken(
+  upsertMagicUser(
+    email: string,
+    firstName?: string,
+    lastName?: string,
+  ): Promise<{
+    user: User;
+    isNewUser?: boolean;
+    isGoogleAccount: boolean;
+  }>;
+  createMagicLinkToken(userId: string): Promise<string>;
+  verifyMagicLinkToken(
     token: string,
   ): Promise<
     | { success: true; userId: string }
     | { success: false; reason: "invalid" | "expired" }
   >;
-  getTokenCreatedAt(userId: string): Promise<Date | null>;
-}
-
-// Helper to detect account type from claims or email
-function detectAccountType(claims: any): AccountType {
-  const iss = claims?.iss || "";
-  const email = claims?.email || "";
-
-  if (iss.includes("google") || email.endsWith("@gmail.com")) {
-    return ACCOUNT_TYPES.GOOGLE;
-  }
-  if (iss.includes("github") || claims?.login) {
-    return ACCOUNT_TYPES.GITHUB;
-  }
-  if (email) {
-    return ACCOUNT_TYPES.EMAIL;
-  }
-  return ACCOUNT_TYPES.UNKNOWN;
+  getMagicLinkTokenCreatedAt(userId: string): Promise<Date | null>;
 }
 
 class AuthStorage implements IAuthStorage {
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
+  }
+
+  async findUserById(userId: string): Promise<User | undefined> {
+    return this.getUser(userId);
   }
 
   async upsertUser(
@@ -95,7 +85,7 @@ class AuthStorage implements IAuthStorage {
         .insert(users)
         .values({
           ...userData,
-          accountType: accountType || ACCOUNT_TYPES.UNKNOWN,
+          accountType: accountType || ACCOUNT_TYPES.MAGIC,
           lastLoginAt: now,
         })
         .onConflictDoUpdate({
@@ -115,55 +105,76 @@ class AuthStorage implements IAuthStorage {
     }
   }
 
-  async createEmailUser(
-    email: string,
-    passwordHash: string,
-    firstName: string,
-    lastName?: string,
-  ): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values({
-        email,
-        firstName,
-        lastName: lastName ?? null,
-        passwordHash,
-        accountType: ACCOUNT_TYPES.EMAIL,
-        emailVerified: false,
-        lastLoginAt: new Date(),
-      })
-      .returning();
-    console.log(`[Auth] Created email user: ${user.id} (${user.email})`);
-    return user;
-  }
-
   async findUserByEmail(email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
   }
 
-  async updatePassword(userId: string, newPasswordHash: string): Promise<void> {
-    await db
-      .update(users)
-      .set({ passwordHash: newPasswordHash, updatedAt: new Date() })
-      .where(eq(users.id, userId));
+  async upsertMagicUser(
+    email: string,
+    firstName?: string,
+    lastName?: string,
+  ): Promise<{
+    user: User;
+    isNewUser?: boolean;
+    isGoogleAccount: boolean;
+  }> {
+    const existing = await this.findUserByEmail(email);
+
+    if (existing) {
+      if (existing.accountType === ACCOUNT_TYPES.GOOGLE) {
+        return { user: existing, isGoogleAccount: true };
+      }
+
+      if (existing.accountType !== ACCOUNT_TYPES.MAGIC) {
+        const [updated] = await db
+          .update(users)
+          .set({ accountType: ACCOUNT_TYPES.MAGIC, updatedAt: new Date() })
+          .where(eq(users.id, existing.id))
+          .returning();
+        return { user: updated, isNewUser: false, isGoogleAccount: false };
+      }
+
+      return { user: existing, isNewUser: false, isGoogleAccount: false };
+    }
+
+    const [newUser] = await db
+      .insert(users)
+      .values({
+        email,
+        firstName: firstName ?? null,
+        lastName: lastName ?? null,
+        accountType: ACCOUNT_TYPES.MAGIC,
+        emailVerified: false,
+        lastLoginAt: new Date(),
+      })
+      .returning();
+
+    return { user: newUser, isNewUser: true, isGoogleAccount: false };
   }
 
-  async createEmailVerificationToken(userId: string): Promise<string> {
-    // Remove any existing tokens for this user (one active token at a time)
+  async createMagicLinkToken(userId: string): Promise<string> {
     await db
       .delete(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.userId, userId));
+      .where(
+        and(
+          eq(emailVerificationTokens.userId, userId),
+          eq(emailVerificationTokens.type, "magic_link"),
+        ),
+      );
 
     const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-    await db
-      .insert(emailVerificationTokens)
-      .values({ userId, token, expiresAt });
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await db.insert(emailVerificationTokens).values({
+      userId,
+      token,
+      type: "magic_link",
+      expiresAt,
+    });
     return token;
   }
 
-  async verifyEmailToken(
+  async verifyMagicLinkToken(
     token: string,
   ): Promise<
     | { success: true; userId: string }
@@ -172,7 +183,12 @@ class AuthStorage implements IAuthStorage {
     const [row] = await db
       .select()
       .from(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.token, token));
+      .where(
+        and(
+          eq(emailVerificationTokens.token, token),
+          eq(emailVerificationTokens.type, "magic_link"),
+        ),
+      );
 
     if (!row) {
       return { success: false, reason: "invalid" as const };
@@ -198,16 +214,19 @@ class AuthStorage implements IAuthStorage {
     return { success: true, userId: row.userId };
   }
 
-  async getTokenCreatedAt(userId: string): Promise<Date | null> {
+  async getMagicLinkTokenCreatedAt(userId: string): Promise<Date | null> {
     const [row] = await db
       .select({ createdAt: emailVerificationTokens.createdAt })
       .from(emailVerificationTokens)
-      .where(eq(emailVerificationTokens.userId, userId));
+      .where(
+        and(
+          eq(emailVerificationTokens.userId, userId),
+          eq(emailVerificationTokens.type, "magic_link"),
+        ),
+      )
+      .orderBy(desc(emailVerificationTokens.createdAt));
     return row?.createdAt ?? null;
   }
 }
 
 export const authStorage = new AuthStorage();
-
-// Export the detectAccountType helper for use in auth flow
-export { detectAccountType };

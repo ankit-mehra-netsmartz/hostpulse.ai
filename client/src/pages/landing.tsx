@@ -8,8 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { LoginForm } from "@/components/LoginForm";
-import { SignupForm } from "@/components/SignupForm";
+import { MagicLinkForm } from "@/components/MagicLinkForm";
 import {
   BarChart3,
   Sparkles,
@@ -40,44 +39,52 @@ import {
 import { Card } from "@/components/ui/card";
 
 export default function Landing() {
-  const [authModal, setAuthModal] = useState<"login" | "signup" | null>(null);
-  const [verifiedMessage, setVerifiedMessage] = useState<{
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [magicMessage, setMagicMessage] = useState<{
     text: string;
     variant: "success" | "warning" | "error";
   } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const verified = params.get("verified");
-    if (verified === "success") {
-      setVerifiedMessage({
-        text: "Your email has been verified! You can now use HostPulse.",
+    const magic = params.get("magic");
+    if (magic === "success") {
+      setMagicMessage({
+        text: "You're signed in!",
         variant: "success",
       });
-    } else if (verified === "expired") {
-      setVerifiedMessage({
-        text: "That verification link has expired. Sign in and request a new one.",
+    } else if (magic === "expired") {
+      setMagicMessage({
+        text: "This sign-in link has expired. Request a new one below.",
         variant: "warning",
       });
-    } else if (verified === "invalid") {
-      setVerifiedMessage({
-        text: "That verification link is invalid or has already been used.",
+      setIsAuthModalOpen(true);
+    } else if (magic === "invalid") {
+      setMagicMessage({
+        text: "Invalid sign-in link. Please request a new one.",
         variant: "error",
       });
+      setIsAuthModalOpen(true);
+    } else if (magic === "error") {
+      setMagicMessage({
+        text: "Something went wrong. Please try again.",
+        variant: "error",
+      });
+      setIsAuthModalOpen(true);
     }
-    if (verified) {
+    if (magic) {
       window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
 
   function openSignup() {
-    setAuthModal("signup");
+    setIsAuthModalOpen(true);
   }
   function openLogin() {
-    setAuthModal("login");
+    setIsAuthModalOpen(true);
   }
   function closeModal() {
-    setAuthModal(null);
+    setIsAuthModalOpen(false);
   }
 
   function handleLoginClick() {
@@ -161,22 +168,22 @@ export default function Landing() {
       </nav>
 
       <main className="pt-16">
-        {verifiedMessage && (
+        {magicMessage && (
           <div
             className={[
               "fixed top-16 inset-x-0 z-40 flex items-center justify-between gap-3 px-4 py-3 text-sm font-medium shadow",
-              verifiedMessage.variant === "success"
+              magicMessage.variant === "success"
                 ? "bg-emerald-600 text-white"
-                : verifiedMessage.variant === "warning"
+                : magicMessage.variant === "warning"
                   ? "bg-amber-500 text-white"
                   : "bg-destructive text-destructive-foreground",
             ].join(" ")}
           >
-            <span>{verifiedMessage.text}</span>
+            <span>{magicMessage.text}</span>
             <button
               type="button"
               aria-label="Dismiss"
-              onClick={() => setVerifiedMessage(null)}
+              onClick={() => setMagicMessage(null)}
               className="shrink-0 opacity-80 hover:opacity-100 transition-opacity"
             >
               ✕
@@ -1003,24 +1010,16 @@ export default function Landing() {
 
       {/* Auth Modal */}
       <Dialog
-        open={authModal !== null}
+        open={isAuthModalOpen}
         onOpenChange={(open) => {
           if (!open) closeModal();
         }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {authModal === "login"
-                ? "Sign in to HostPulse"
-                : "Create your account"}
-            </DialogTitle>
+            <DialogTitle>Continue to HostPulse</DialogTitle>
           </DialogHeader>
-          {authModal === "login" ? (
-            <LoginForm onSwitchToSignup={() => setAuthModal("signup")} />
-          ) : (
-            <SignupForm onSwitchToLogin={() => setAuthModal("login")} />
-          )}
+          <MagicLinkForm onGoogleLogin={handleLoginClick} />
         </DialogContent>
       </Dialog>
     </div>

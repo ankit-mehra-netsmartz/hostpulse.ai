@@ -35,10 +35,7 @@ export const sessions = pgTable(
 // Account type for tracking how user signed up
 export const ACCOUNT_TYPES = {
   GOOGLE: "google",
-  GITHUB: "github",
-  REPLIT: "replit",
-  EMAIL: "email",
-  UNKNOWN: "unknown",
+  MAGIC: "magic",
 } as const;
 
 export type AccountType = (typeof ACCOUNT_TYPES)[keyof typeof ACCOUNT_TYPES];
@@ -139,6 +136,7 @@ export const emailVerificationTokens = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     token: text("token").notNull().unique(),
+    type: varchar("type", { length: 50 }).notNull().default("magic_link"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

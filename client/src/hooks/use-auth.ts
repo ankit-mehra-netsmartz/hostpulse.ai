@@ -50,65 +50,15 @@ export function useAuth() {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Email / password helpers (used by LoginForm and SignupForm)
-// ---------------------------------------------------------------------------
-
-export interface EmailSignupPayload {
-  email: string;
-  password: string;
-  name: string;
-}
-
-export interface EmailLoginPayload {
-  email: string;
-  password: string;
-}
-
-async function postJson(url: string, body: object) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message ?? "Request failed");
-  }
-  return data;
-}
-
-export function useSignupWithEmail() {
-  const queryClient = useQueryClient();
+export function useRequestMagicLink() {
   return useMutation({
-    mutationFn: (payload: EmailSignupPayload) =>
-      postJson("/api/auth/signup", payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-    },
-  });
-}
-
-export function useLoginWithEmail() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: EmailLoginPayload) =>
-      postJson("/api/auth/login", payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-    },
-  });
-}
-
-export function useResendVerification() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/auth/resend-verification", {
+    mutationFn: async (email: string) => {
+      const res = await fetch("/api/auth/magic-link", {
         method: "POST",
-        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
       });
+
       if (res.status === 429) {
         const data = await res.json();
         // eslint-disable-next-line @typescript-eslint/no-throw-literal
@@ -118,12 +68,13 @@ export function useResendVerification() {
           message: data.message,
         };
       }
+
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.message ?? "Failed to resend verification email");
+        throw new Error(data.message ?? "Something went wrong");
       }
+
       return res.json();
     },
-    // Intentionally not invalidating queryKey here — components manage their own UI state
   });
 }

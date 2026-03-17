@@ -17,7 +17,6 @@ import { BackgroundAnalysisCard } from "@/components/background-analysis-card";
 import { BackgroundSyncCard } from "@/components/background-sync-card";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { BetaBanner } from "@/components/beta-banner";
-import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { Loader2, GripVertical } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Workspace } from "@shared/schema";
@@ -281,10 +280,6 @@ function Router() {
         <Route component={Landing} />
       </Switch>
     );
-  }
-
-  if (user.accountType === "email" && user.emailVerified === false) {
-    return <EmailVerificationBanner user={user} />;
   }
 
   // Allow invite page to bypass onboarding for users accepting invitations

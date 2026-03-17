@@ -1,7 +1,5 @@
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
-import { Strategy as LocalStrategy } from "passport-local";
-import bcrypt from "bcrypt";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
@@ -69,37 +67,6 @@ export async function setupAuth(app: Express) {
         } catch (error) {
           console.error("[Auth] Error in Google verify callback:", error);
           done(error as Error, undefined);
-        }
-      },
-    ),
-  );
-
-  // Register Local (email/password) strategy
-  passport.use(
-    new LocalStrategy(
-      { usernameField: "email", passwordField: "password" },
-      async (email, password, done) => {
-        try {
-          const user = await authStorage.findUserByEmail(email);
-          if (!user) {
-            return done(null, false, { message: "Invalid email or password" });
-          }
-          if (user.accountType === ACCOUNT_TYPES.GOOGLE) {
-            return done(null, false, {
-              message:
-                "This email is registered via Google. Please sign in with Google.",
-            });
-          }
-          if (!user.passwordHash) {
-            return done(null, false, { message: "Invalid email or password" });
-          }
-          const isValid = await bcrypt.compare(password, user.passwordHash);
-          if (!isValid) {
-            return done(null, false, { message: "Invalid email or password" });
-          }
-          return done(null, { id: user.id, email: user.email });
-        } catch (error) {
-          return done(error);
         }
       },
     ),

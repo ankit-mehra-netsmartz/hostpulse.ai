@@ -70,6 +70,8 @@ export const config = {
 
   resend: {
     apiKey: process.env.HOSTPULSE_RESEND_API_KEY,
+    from: process.env.HOSTPULSE_RESEND_FROM,
+    baseUrl: process.env.HOSTPULSE_BASE_URL,
   },
 
   elevenLabs: {
