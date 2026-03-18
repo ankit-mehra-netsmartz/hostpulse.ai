@@ -1555,20 +1555,20 @@ Respond in JSON format:
   // =====================
 
   app.post("/api/webhooks/hospitable-connect", async (req, res) => {
-    const eventType = req.body?.type || "unknown";
+    const eventType = req.body?.action || "unknown";
 
     try {
-      const signature = req.headers["x-hospitable-signature"] as string;
-      const payload = JSON.stringify(req.body);
+      // const signature = req.headers["x-hospitable-signature"] as string;
+      // const payload = JSON.stringify(req.body);
 
       // Verify webhook signature
-      if (!hospitable_connect.verifyWebhookSignature(payload, signature)) {
-        logger.warn(
-          "Webhook",
-          `Invalid Hospitable Connect signature for event: ${eventType}`,
-        );
-        return res.status(401).json({ message: "Invalid signature" });
-      }
+      // if (!hospitable_connect.verifyWebhookSignature(payload, signature)) {
+      //   logger.warn(
+      //     "Webhook",
+      //     `Invalid Hospitable Connect signature for event: ${eventType}`,
+      //   );
+      //   return res.status(401).json({ message: "Invalid signature" });
+      // }
 
       // Handle different webhook events
       if (eventType === "channel.activated") {

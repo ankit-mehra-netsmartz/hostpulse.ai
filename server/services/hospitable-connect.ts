@@ -10,9 +10,7 @@ const CONNECT_API_BASE = "https://connect.hospitable.com/api/v1";
 type ConnectUser = {
   id: string;
   email: string;
-  user_metadata?: {
-    name?: string;
-  };
+  name?: string;
 };
 
 interface CreateCustomerResponse {
@@ -29,14 +27,32 @@ interface GenerateAuthCodeResponse {
 }
 
 interface HospitableConnectWebhookPayload {
-  type: string;
+  id: string;
+  action: string;
+  created: string;
+  version: string;
+  customer_id: string;
+
   data: {
-    customer_id: string;
-    channel_id: string;
-    channel_type: string;
-    connected_at?: string;
-    listing_id?: string;
-    listing_name?: string;
+    id: string;
+    name: string;
+    picture: string | null;
+
+    customer: {
+      id: string;
+      name: string;
+      email: string;
+      phone: string | null;
+      timezone: string;
+      ip_address: string | null;
+    };
+
+    location: string | null;
+    platform: string;
+    description: string | null;
+    platform_id: string;
+    ready_to_migrate: boolean;
+    first_connected_at: string;
   };
 }
 
@@ -74,7 +90,7 @@ export const connectHospitableService = {
       body: JSON.stringify({
         id: user.id,
         email: user.email,
-        name: user.user_metadata?.name || "User",
+        name: user.name || "User",
         timezone: "Europe/Paris",
       }),
     });
@@ -84,7 +100,7 @@ export const connectHospitableService = {
    * Object-style API matching the frontend snippet.
    */
   async generateAuthCode(
-    user: ConnectUser,
+    customerId: string,
     redirectUrl: string,
   ): Promise<Response> {
     if (!config.hospitable.connectToken) {
@@ -95,7 +111,7 @@ export const connectHospitableService = {
       method: "POST",
       headers: this.headers,
       body: JSON.stringify({
-        customer_id: user.id,
+        customer_id: customerId,
         redirect_url: redirectUrl,
       }),
     });
@@ -107,6 +123,7 @@ export const connectHospitableService = {
   async createCustomerForWorkspace(
     email: string,
     userId: string,
+    name: string,
     workspaceId: string | undefined,
     originUrl: string,
   ): Promise<string> {
@@ -118,7 +135,7 @@ export const connectHospitableService = {
       const response = await this.createCustomer({
         id: userId,
         email,
-        user_metadata: { name: "User" },
+        name,
       });
 
       if (!response.ok) {
@@ -151,10 +168,7 @@ export const connectHospitableService = {
     }
 
     try {
-      const response = await this.generateAuthCode(
-        { id: customerId, email: "", user_metadata: { name: "User" } },
-        returnUrl,
-      );
+      const response = await this.generateAuthCode(customerId, returnUrl);
 
       if (!response.ok) {
         const error = await response.text();
@@ -186,7 +200,7 @@ export const connectHospitableService = {
 
     try {
       const response = await fetch(
-        `${CONNECT_API_BASE}/customers/${customerId}/channels`,
+        `${CONNECT_API_BASE}/customers/${customerId}/listings`,
         {
           headers: {
             Authorization: `Bearer ${config.hospitable.connectToken}`,
@@ -232,10 +246,10 @@ export const connectHospitableService = {
    * Creates or updates data source when channel is connected
    */
   async handleWebhook(payload: HospitableConnectWebhookPayload): Promise<void> {
-    const { type, data } = payload;
+    const { action, data } = payload;
 
-    if (type !== "channel.activated") {
-      logger.debug(`Ignoring Hospitable Connect webhook type: ${type}`);
+    if (action !== "channel.activated") {
+      logger.debug(`Ignoring Hospitable Connect webhook type: ${action}`);
       return;
     }
 
@@ -247,32 +261,32 @@ export const connectHospitableService = {
         .where(
           and(
             eq(dataSources.provider, "airbnb"),
-            eq(dataSources.externalCustomerId, data.customer_id),
+            eq(dataSources.externalCustomerId, data.customer.id),
           ),
         );
 
       if (dataSourcesToUpdate.length === 0) {
-        logger.warn(`No data source found for customer ${data.customer_id}`);
+        logger.warn(`No data source found for customer ${data.customer.id}`);
         return;
       }
-
+      console.log("Data sources to update:", dataSourcesToUpdate);
       const dataSource = dataSourcesToUpdate[0];
 
       // Update data source to mark as connected
-      await db
+      const updatedDataSource = await db
         .update(dataSources)
         .set({
           isConnected: true,
           updatedAt: new Date(),
         })
-        .where(eq(dataSources.id, dataSource.id));
-
+        .where(eq(dataSources.externalCustomerId, data.customer.id));
+      console.log("Updated data source:", updatedDataSource);
       logger.info(
         `Marked Airbnb data source ${dataSource.id} as connected via Hospitable Connect`,
       );
 
       // Sync listings for this data source
-      await this.syncConnectListings(dataSource.id, data.customer_id);
+      await this.syncConnectListings(dataSource.id, data.customer.id);
     } catch (error) {
       logger.error("Error handling Hospitable Connect webhook:", error);
       throw error;

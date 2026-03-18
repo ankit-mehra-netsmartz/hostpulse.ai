@@ -721,7 +721,7 @@ export function registerDataSourceRoutes(
       try {
         const userId = getUserId(req);
         const workspaceId = getWorkspaceId(req) || undefined;
-        const { email } = req.body;
+        const { email, name } = req.body;
 
         if (!email) {
           return res.status(400).json({ message: "Email is required" });
@@ -735,6 +735,7 @@ export function registerDataSourceRoutes(
         const customerId = await hospitable_connect.createCustomerForWorkspace(
           email,
           userId,
+          name,
           workspaceId,
           originUrl,
         );

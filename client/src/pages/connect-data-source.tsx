@@ -459,7 +459,7 @@ export default function ConnectDataSource() {
       const customerRes = await connectHospitableService.createCustomer({
         id: user.id,
         email: user.email,
-        name: user.firstName || user.email,
+        name: `${user.firstName} ${user.lastName}`.trim() || user.email,
       });
       if (!customerRes.ok) {
         throw new Error("Failed to create customer");
@@ -467,7 +467,11 @@ export default function ConnectDataSource() {
 
       // Step 2: Generate auth code with return URL
       const authCodeRes = await connectHospitableService.generateAuthCode(
-        { id: user.id, email: user.email, name: user.firstName || user.email },
+        {
+          id: user.id,
+          email: user.email,
+          name: `${user.firstName} ${user.lastName}`.trim() || user.email,
+        },
         `${window.location.origin}/data-sources`,
       );
       if (!authCodeRes.ok) {
@@ -700,28 +704,53 @@ export default function ConnectDataSource() {
                     Connect Hospitable
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
-                  <Button
-                    onClick={handleConnectAirbnb}
-                    disabled={isConnectingAirbnb}
-                    variant="outline"
-                    data-testid="button-connect-airbnb"
-                    className="w-full"
-                  >
-                    {isConnectingAirbnb ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Connecting...
-                      </>
-                    ) : (
-                      <>
-                        <SiAirbnb className="w-4 h-4 mr-2" />
-                        Connect Airbnb
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </>
-                    )}
-                  </Button>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-rose-700 flex items-center justify-center flex-shrink-0">
+                    <SiAirbnb className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle>Airbnb</CardTitle>
+                    <CardDescription>
+                      Connect Airbnb through Hospitable Connect to authorize
+                      your account
+                    </CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Start Airbnb authorization to link your account and continue
+                  setup in Hospitable Connect.
+                </p>
+                <Button
+                  onClick={handleConnectAirbnb}
+                  disabled={isConnectingAirbnb}
+                  data-testid="button-connect-airbnb"
+                >
+                  {isConnectingAirbnb ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <SiAirbnb className="w-4 h-4 mr-2" />
+                      Connect Airbnb
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
