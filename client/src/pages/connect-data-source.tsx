@@ -1,19 +1,53 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Building2, ArrowRight, CheckCircle2, Loader2, AlertCircle, RefreshCw, Unplug, Database, Settings, Calendar, ClipboardList, ChevronDown, ChevronUp, Filter, Lightbulb, Send, Tag, MessageSquare, Save, X } from "lucide-react";
+import {
+  Building2,
+  ArrowRight,
+  CheckCircle2,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+  Unplug,
+  Database,
+  Settings,
+  Calendar,
+  ClipboardList,
+  ChevronDown,
+  ChevronUp,
+  Filter,
+  Lightbulb,
+  Send,
+  Tag,
+  MessageSquare,
+  Save,
+  X,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SiNotion } from "react-icons/si";
+import { SiAirbnb } from "react-icons/si";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearch, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { connectHospitableService } from "@/lib/connect-hospitable-service";
 import { useToast } from "@/hooks/use-toast";
 import { useWorkspace } from "@/contexts/workspace-context";
 import { NotionDatabaseSelector } from "@/components/notion-database-selector";
@@ -48,6 +82,7 @@ export default function ConnectDataSource() {
   const oauthError = searchParams.get("error");
   const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnectingAirbnb, setIsConnectingAirbnb] = useState(false);
   const [isConnectingNotion, setIsConnectingNotion] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(true);
   const [localPropertyFilter, setLocalPropertyFilter] = useState<string[]>([]);
@@ -55,14 +90,24 @@ export default function ConnectDataSource() {
   const [integrationName, setIntegrationName] = useState("");
   const [integrationDescription, setIntegrationDescription] = useState("");
   const [slackWebhookUrl, setSlackWebhookUrl] = useState("");
+  const { user } = useAuth();
   const { activeWorkspace, isLoading: isWorkspaceLoading } = useWorkspace();
   const [, setLocation] = useLocation();
 
-  const { data: dataSources, isLoading, error, refetch } = useQuery<DataSource[]>({
+  const {
+    data: dataSources,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery<DataSource[]>({
     queryKey: ["/api/data-sources"],
   });
 
-  const { data: notionConnection, isLoading: isLoadingNotion, refetch: refetchNotion } = useQuery<NotionConnectionStatus>({
+  const {
+    data: notionConnection,
+    isLoading: isLoadingNotion,
+    refetch: refetchNotion,
+  } = useQuery<NotionConnectionStatus>({
     queryKey: ["/api/notion/connection", activeWorkspace?.id],
     enabled: !!activeWorkspace,
   });
@@ -70,13 +115,14 @@ export default function ConnectDataSource() {
   // Listen for OAuth success/error messages from popup
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'oauth_success') {
-        if (event.data.provider === 'notion') {
+      if (event.data?.type === "oauth_success") {
+        if (event.data.provider === "notion") {
           setIsConnectingNotion(false);
           refetchNotion();
           toast({
             title: "Connected!",
-            description: "Successfully connected to Notion. You can now select a database for tag sync.",
+            description:
+              "Successfully connected to Notion. You can now select a database for tag sync.",
           });
         } else {
           setIsConnecting(false);
@@ -84,12 +130,13 @@ export default function ConnectDataSource() {
           queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] });
           toast({
             title: "Connected!",
-            description: "Successfully connected to Hospitable. You can now import your properties.",
+            description:
+              "Successfully connected to Hospitable. You can now import your properties.",
           });
           setLocation("/properties");
         }
-      } else if (event.data?.type === 'oauth_error') {
-        if (event.data.provider === 'notion') {
+      } else if (event.data?.type === "oauth_error") {
+        if (event.data.provider === "notion") {
           setIsConnectingNotion(false);
           toast({
             title: "Connection Failed",
@@ -107,12 +154,15 @@ export default function ConnectDataSource() {
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, [refetch, refetchNotion, toast, setLocation]);
 
-  const hasConnectedSource = dataSources && dataSources.length > 0 && dataSources.some(ds => ds.isConnected);
-  const connectedSource = dataSources?.find(ds => ds.isConnected);
+  const hasConnectedSource =
+    dataSources &&
+    dataSources.length > 0 &&
+    dataSources.some((ds) => ds.isConnected);
+  const connectedSource = dataSources?.find((ds) => ds.isConnected);
 
   const disconnectMutation = useMutation({
     mutationFn: async (dataSourceId: string) => {
@@ -122,7 +172,9 @@ export default function ConnectDataSource() {
       queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] });
       queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
       queryClient.invalidateQueries({ queryKey: ["/api/listings/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/listings/suggestions"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/listings/suggestions"],
+      });
       toast({
         title: "Disconnected",
         description: "Successfully disconnected from Hospitable.",
@@ -159,13 +211,15 @@ export default function ConnectDataSource() {
 
   const toggleAutoSyncMutation = useMutation({
     mutationFn: async (enabled: boolean) => {
-      await apiRequest("PATCH", "/api/notion/settings", { autoSyncEnabled: enabled });
+      await apiRequest("PATCH", "/api/notion/settings", {
+        autoSyncEnabled: enabled,
+      });
     },
     onSuccess: (_, enabled) => {
       queryClient.invalidateQueries({ queryKey: ["/api/notion/connection"] });
       toast({
         title: enabled ? "Auto-sync Enabled" : "Auto-sync Disabled",
-        description: enabled 
+        description: enabled
           ? "New tags will be automatically synced to Notion."
           : "Tags will only sync when you click the sync button.",
       });
@@ -187,18 +241,20 @@ export default function ConnectDataSource() {
 
   // Update Notion sync settings
   const updateSyncSettingsMutation = useMutation({
-    mutationFn: async (settings: Partial<{
-      syncReservations: boolean;
-      syncConfirmedTasks: boolean;
-      syncTags: boolean;
-      reservationsDatabaseId: string;
-      reservationsDatabaseName: string;
-      tasksDatabaseId: string;
-      tasksDatabaseName: string;
-      tagsDatabaseId: string;
-      tagsDatabaseName: string;
-      propertyFilter: string[];
-    }>) => {
+    mutationFn: async (
+      settings: Partial<{
+        syncReservations: boolean;
+        syncConfirmedTasks: boolean;
+        syncTags: boolean;
+        reservationsDatabaseId: string;
+        reservationsDatabaseName: string;
+        tasksDatabaseId: string;
+        tasksDatabaseName: string;
+        tagsDatabaseId: string;
+        tagsDatabaseName: string;
+        propertyFilter: string[];
+      }>,
+    ) => {
       await apiRequest("PATCH", "/api/notion/settings", settings);
     },
     onSuccess: () => {
@@ -265,27 +321,36 @@ export default function ConnectDataSource() {
   }, []);
 
   // Debounced property filter update
-  const debouncedUpdatePropertyFilter = useCallback((newFilter: string[]) => {
-    if (propertyFilterTimeoutRef.current) {
-      clearTimeout(propertyFilterTimeoutRef.current);
-    }
-    propertyFilterTimeoutRef.current = setTimeout(() => {
-      updateSyncSettingsMutation.mutate({ propertyFilter: newFilter });
-    }, 500);
-  }, [updateSyncSettingsMutation]);
+  const debouncedUpdatePropertyFilter = useCallback(
+    (newFilter: string[]) => {
+      if (propertyFilterTimeoutRef.current) {
+        clearTimeout(propertyFilterTimeoutRef.current);
+      }
+      propertyFilterTimeoutRef.current = setTimeout(() => {
+        updateSyncSettingsMutation.mutate({ propertyFilter: newFilter });
+      }, 500);
+    },
+    [updateSyncSettingsMutation],
+  );
 
   // Handle property filter checkbox change
-  const handlePropertyFilterChange = useCallback((listingId: string, checked: boolean) => {
-    const newFilter = checked
-      ? [...localPropertyFilter, listingId]
-      : localPropertyFilter.filter((id) => id !== listingId);
-    setLocalPropertyFilter(newFilter);
-    debouncedUpdatePropertyFilter(newFilter);
-  }, [localPropertyFilter, debouncedUpdatePropertyFilter]);
+  const handlePropertyFilterChange = useCallback(
+    (listingId: string, checked: boolean) => {
+      const newFilter = checked
+        ? [...localPropertyFilter, listingId]
+        : localPropertyFilter.filter((id) => id !== listingId);
+      setLocalPropertyFilter(newFilter);
+      debouncedUpdatePropertyFilter(newFilter);
+    },
+    [localPropertyFilter, debouncedUpdatePropertyFilter],
+  );
 
   // Integration suggestion mutation
   const submitIntegrationSuggestion = useMutation({
-    mutationFn: async (data: { integrationName: string; integrationDescription: string }) => {
+    mutationFn: async (data: {
+      integrationName: string;
+      integrationDescription: string;
+    }) => {
       await apiRequest("POST", "/api/integration-suggestion", {
         ...data,
         workspaceId: activeWorkspace?.id,
@@ -317,7 +382,10 @@ export default function ConnectDataSource() {
       });
       return;
     }
-    if (!integrationDescription.trim() || integrationDescription.trim().length < 10) {
+    if (
+      !integrationDescription.trim() ||
+      integrationDescription.trim().length < 10
+    ) {
       toast({
         title: "Missing Information",
         description: "Please describe what you want the integration to do.",
@@ -333,24 +401,24 @@ export default function ConnectDataSource() {
 
   const handleConnectHospitable = () => {
     // Pass workspaceId as query param since headers don't work with direct browser navigation
-    const oauthUrl = activeWorkspace 
+    const oauthUrl = activeWorkspace
       ? `/api/oauth/hospitable/authorize?workspaceId=${activeWorkspace.id}`
       : "/api/oauth/hospitable/authorize";
-    
+
     setIsConnecting(true);
-    
+
     // Open OAuth in a popup window so it feels like it's happening within the app
     const width = 600;
     const height = 700;
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
-    
+
     const popup = window.open(
       oauthUrl,
-      'hospitable-oauth',
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
+      "hospitable-oauth",
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`,
     );
-    
+
     // Poll for popup closure and check for success
     const checkPopup = setInterval(() => {
       if (popup?.closed) {
@@ -361,6 +429,71 @@ export default function ConnectDataSource() {
         queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] });
       }
     }, 500);
+  };
+
+  const handleConnectAirbnb = async () => {
+    if (!user) {
+      toast({
+        title: "Missing User",
+        description:
+          "User information is missing. Please try logging in again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsConnectingAirbnb(true);
+    try {
+      if (!user.email) {
+        toast({
+          title: "Missing Email",
+          description:
+            "We could not find your account email. Please re-login and try again.",
+          variant: "destructive",
+        });
+        setIsConnectingAirbnb(false);
+        return;
+      }
+
+      // Step 1: Create customer
+      const customerRes = await connectHospitableService.createCustomer({
+        id: user.id,
+        email: user.email,
+        name: user.firstName || user.email,
+      });
+      if (!customerRes.ok) {
+        throw new Error("Failed to create customer");
+      }
+
+      // Step 2: Generate auth code with return URL
+      const authCodeRes = await connectHospitableService.generateAuthCode(
+        { id: user.id, email: user.email, name: user.firstName || user.email },
+        `${window.location.origin}/data-sources`,
+      );
+      if (!authCodeRes.ok) {
+        throw new Error("Failed to get auth code");
+      }
+
+      // Step 3: Redirect to Hospitable Connect authorization
+      const authCodeData = await authCodeRes.json();
+      const returnUrl = authCodeData?.data?.return_url;
+
+      if (returnUrl) {
+        window.location.href = returnUrl;
+      } else {
+        throw new Error("No return_url received from server");
+      }
+    } catch (error) {
+      setIsConnectingAirbnb(false);
+      toast({
+        title: "Connection Failed",
+        description:
+          error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsConnectingAirbnb(false);
+    }
   };
 
   const handleDisconnect = () => {
@@ -381,18 +514,18 @@ export default function ConnectDataSource() {
 
     const oauthUrl = `/api/oauth/notion/authorize?workspaceId=${activeWorkspace.id}`;
     setIsConnectingNotion(true);
-    
+
     const width = 600;
     const height = 700;
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
-    
+
     const popup = window.open(
       oauthUrl,
-      'notion-oauth',
-      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`
+      "notion-oauth",
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`,
     );
-    
+
     const checkPopup = setInterval(() => {
       if (popup?.closed) {
         clearInterval(checkPopup);
@@ -441,7 +574,8 @@ export default function ConnectDataSource() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold mb-2">Data Sources</h1>
           <p className="text-muted-foreground">
-            Connect your property management platforms to sync listings and enable AI-powered analysis.
+            Connect your property management platforms to sync listings and
+            enable AI-powered analysis.
           </p>
         </div>
 
@@ -465,13 +599,17 @@ export default function ConnectDataSource() {
                     <div className="flex items-center gap-2">
                       <CardTitle>Hospitable</CardTitle>
                       {hasConnectedSource && (
-                        <Badge variant="default" className="bg-emerald-500 hover:bg-emerald-600">
+                        <Badge
+                          variant="default"
+                          className="bg-emerald-500 hover:bg-emerald-600"
+                        >
                           Connected
                         </Badge>
                       )}
                     </div>
                     <CardDescription>
-                      Sync your Hospitable listings, reviews, and guest conversations
+                      Sync your Hospitable listings, reviews, and guest
+                      conversations
                     </CardDescription>
                   </div>
                 </div>
@@ -492,7 +630,11 @@ export default function ConnectDataSource() {
                       Failed to load data sources. Please try again.
                     </AlertDescription>
                   </Alert>
-                  <Button onClick={() => refetch()} variant="outline" data-testid="button-retry">
+                  <Button
+                    onClick={() => refetch()}
+                    variant="outline"
+                    data-testid="button-retry"
+                  >
                     <RefreshCw className="w-4 h-4 mr-2" />
                     Retry
                   </Button>
@@ -502,10 +644,15 @@ export default function ConnectDataSource() {
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                     <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                     <div className="flex-1">
-                      <p className="font-medium text-emerald-600 dark:text-emerald-400">Connected to Hospitable</p>
+                      <p className="font-medium text-emerald-600 dark:text-emerald-400">
+                        Connected to Hospitable
+                      </p>
                       {connectedSource?.lastSyncAt && (
                         <p className="text-sm text-muted-foreground">
-                          Last synced: {new Date(connectedSource.lastSyncAt).toLocaleString()}
+                          Last synced:{" "}
+                          {new Date(
+                            connectedSource.lastSyncAt,
+                          ).toLocaleString()}
                         </p>
                       )}
                     </div>
@@ -514,15 +661,17 @@ export default function ConnectDataSource() {
                     <Button
                       variant="outline"
                       onClick={() => {
-                        queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+                        queryClient.invalidateQueries({
+                          queryKey: ["/api/listings"],
+                        });
                         setLocation("/properties");
                       }}
                       data-testid="button-go-to-properties"
                     >
                       Manage Properties
                     </Button>
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       onClick={handleDisconnect}
                       disabled={disconnectMutation.isPending}
@@ -540,15 +689,36 @@ export default function ConnectDataSource() {
               ) : (
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Connect your Hospitable account to automatically sync your property listings, 
-                    guest reviews, and conversation history for AI-powered analysis.
+                    Connect your Hospitable account to automatically sync your
+                    property listings, guest reviews, and conversation history
+                    for AI-powered analysis.
                   </p>
-                  <Button 
+                  <Button
                     onClick={handleConnectHospitable}
                     data-testid="button-connect-hospitable"
                   >
                     Connect Hospitable
                     <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                  <Button
+                    onClick={handleConnectAirbnb}
+                    disabled={isConnectingAirbnb}
+                    variant="outline"
+                    data-testid="button-connect-airbnb"
+                    className="w-full"
+                  >
+                    {isConnectingAirbnb ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      <>
+                        <SiAirbnb className="w-4 h-4 mr-2" />
+                        Connect Airbnb
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </>
+                    )}
                   </Button>
                 </div>
               )}
@@ -566,7 +736,10 @@ export default function ConnectDataSource() {
                     <div className="flex items-center gap-2">
                       <CardTitle>Notion</CardTitle>
                       {notionConnection?.connected && (
-                        <Badge variant="default" className="bg-emerald-500 hover:bg-emerald-600">
+                        <Badge
+                          variant="default"
+                          className="bg-emerald-500 hover:bg-emerald-600"
+                        >
                           Connected
                         </Badge>
                       )}
@@ -590,18 +763,22 @@ export default function ConnectDataSource() {
                     <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
                     <div className="flex-1">
                       <p className="font-medium text-emerald-600 dark:text-emerald-400">
-                        Connected to {notionConnection.notionWorkspaceName || 'Notion'}
+                        Connected to{" "}
+                        {notionConnection.notionWorkspaceName || "Notion"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Connected on {notionConnection.createdAt 
-                          ? new Date(notionConnection.createdAt).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              year: 'numeric',
-                              hour: 'numeric',
-                              minute: '2-digit'
+                        Connected on{" "}
+                        {notionConnection.createdAt
+                          ? new Date(
+                              notionConnection.createdAt,
+                            ).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
                             })
-                          : 'Unknown date'}
+                          : "Unknown date"}
                       </p>
                       {notionConnection.selectedDatabaseName ? (
                         <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
@@ -618,18 +795,25 @@ export default function ConnectDataSource() {
                   <div className="flex items-center gap-3">
                     <NotionDatabaseSelector
                       currentDatabaseId={notionConnection.selectedDatabaseId}
-                      currentDatabaseName={notionConnection.selectedDatabaseName}
+                      currentDatabaseName={
+                        notionConnection.selectedDatabaseName
+                      }
                       title="Select Tags Database"
                       description="Choose a Notion database to sync guest feedback tags to."
                       trigger={
-                        <Button variant="outline" data-testid="button-select-notion-database">
+                        <Button
+                          variant="outline"
+                          data-testid="button-select-notion-database"
+                        >
                           <Database className="w-4 h-4 mr-2" />
-                          {notionConnection.selectedDatabaseId ? "Change Database" : "Select Database"}
+                          {notionConnection.selectedDatabaseId
+                            ? "Change Database"
+                            : "Select Database"}
                         </Button>
                       }
                     />
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       onClick={handleDisconnectNotion}
                       disabled={disconnectNotionMutation.isPending}
@@ -644,14 +828,25 @@ export default function ConnectDataSource() {
                     </Button>
                   </div>
                   {/* Sync Configuration Section */}
-                  <Collapsible open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+                  <Collapsible
+                    open={isSettingsOpen}
+                    onOpenChange={setIsSettingsOpen}
+                  >
                     <CollapsibleTrigger asChild>
-                      <Button variant="outline" className="w-full justify-between" data-testid="button-toggle-sync-settings">
+                      <Button
+                        variant="outline"
+                        className="w-full justify-between"
+                        data-testid="button-toggle-sync-settings"
+                      >
                         <span className="flex items-center gap-2">
                           <Settings className="w-4 h-4" />
                           Sync Settings
                         </span>
-                        {isSettingsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        {isSettingsOpen ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
                       </Button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="mt-4 space-y-4">
@@ -661,52 +856,75 @@ export default function ConnectDataSource() {
                           <Database className="w-4 h-4" />
                           What to Sync
                         </h4>
-                        
+
                         {/* Reservations toggle */}
                         <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
                           <div className="flex items-center gap-3">
                             <Switch
                               id="sync-reservations"
-                              checked={notionConnection.syncReservations ?? true}
-                              onCheckedChange={(checked) => updateSyncSettingsMutation.mutate({ syncReservations: checked })}
+                              checked={
+                                notionConnection.syncReservations ?? true
+                              }
+                              onCheckedChange={(checked) =>
+                                updateSyncSettingsMutation.mutate({
+                                  syncReservations: checked,
+                                })
+                              }
                               disabled={updateSyncSettingsMutation.isPending}
                               data-testid="switch-sync-reservations"
                             />
-                            <Label htmlFor="sync-reservations" className="cursor-pointer">
+                            <Label
+                              htmlFor="sync-reservations"
+                              className="cursor-pointer"
+                            >
                               <span className="font-medium flex items-center gap-2">
                                 <Calendar className="w-4 h-4 text-muted-foreground" />
                                 Reservations
                               </span>
                               <p className="text-xs text-muted-foreground">
-                                Guest name, property, dates, sentiment score, public review
+                                Guest name, property, dates, sentiment score,
+                                public review
                               </p>
                             </Label>
                           </div>
                         </div>
-                        
+
                         {/* Database selector for reservations */}
                         {notionConnection.syncReservations !== false && (
                           <div className="ml-6 flex items-center gap-2">
                             <NotionDatabaseSelector
-                              currentDatabaseId={notionConnection.reservationsDatabaseId}
-                              currentDatabaseName={notionConnection.reservationsDatabaseName}
-                              onSelect={(dbId, dbName) => updateSyncSettingsMutation.mutate({ 
-                                reservationsDatabaseId: dbId, 
-                                reservationsDatabaseName: dbName 
-                              })}
+                              currentDatabaseId={
+                                notionConnection.reservationsDatabaseId
+                              }
+                              currentDatabaseName={
+                                notionConnection.reservationsDatabaseName
+                              }
+                              onSelect={(dbId, dbName) =>
+                                updateSyncSettingsMutation.mutate({
+                                  reservationsDatabaseId: dbId,
+                                  reservationsDatabaseName: dbName,
+                                })
+                              }
                               title="Select Reservations Database"
                               description="Choose a Notion database to sync reservation data to."
                               trigger={
-                                <Button variant="outline" size="sm" data-testid="button-select-reservations-database">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  data-testid="button-select-reservations-database"
+                                >
                                   <Database className="w-3 h-3 mr-2" />
-                                  {notionConnection.reservationsDatabaseId 
-                                    ? notionConnection.reservationsDatabaseName || "Change Database"
+                                  {notionConnection.reservationsDatabaseId
+                                    ? notionConnection.reservationsDatabaseName ||
+                                      "Change Database"
                                     : "Select Database"}
                                 </Button>
                               }
                             />
                             {!notionConnection.reservationsDatabaseId && (
-                              <span className="text-xs text-amber-600">Required</span>
+                              <span className="text-xs text-amber-600">
+                                Required
+                              </span>
                             )}
                           </div>
                         )}
@@ -716,12 +934,21 @@ export default function ConnectDataSource() {
                           <div className="flex items-center gap-3">
                             <Switch
                               id="sync-tasks"
-                              checked={notionConnection.syncConfirmedTasks ?? true}
-                              onCheckedChange={(checked) => updateSyncSettingsMutation.mutate({ syncConfirmedTasks: checked })}
+                              checked={
+                                notionConnection.syncConfirmedTasks ?? true
+                              }
+                              onCheckedChange={(checked) =>
+                                updateSyncSettingsMutation.mutate({
+                                  syncConfirmedTasks: checked,
+                                })
+                              }
                               disabled={updateSyncSettingsMutation.isPending}
                               data-testid="switch-sync-tasks"
                             />
-                            <Label htmlFor="sync-tasks" className="cursor-pointer">
+                            <Label
+                              htmlFor="sync-tasks"
+                              className="cursor-pointer"
+                            >
                               <span className="font-medium flex items-center gap-2">
                                 <ClipboardList className="w-4 h-4 text-muted-foreground" />
                                 Confirmed Tasks
@@ -732,30 +959,43 @@ export default function ConnectDataSource() {
                             </Label>
                           </div>
                         </div>
-                        
+
                         {/* Database selector for tasks */}
                         {notionConnection.syncConfirmedTasks !== false && (
                           <div className="ml-6 flex items-center gap-2">
                             <NotionDatabaseSelector
-                              currentDatabaseId={notionConnection.tasksDatabaseId}
-                              currentDatabaseName={notionConnection.tasksDatabaseName}
-                              onSelect={(dbId, dbName) => updateSyncSettingsMutation.mutate({ 
-                                tasksDatabaseId: dbId, 
-                                tasksDatabaseName: dbName 
-                              })}
+                              currentDatabaseId={
+                                notionConnection.tasksDatabaseId
+                              }
+                              currentDatabaseName={
+                                notionConnection.tasksDatabaseName
+                              }
+                              onSelect={(dbId, dbName) =>
+                                updateSyncSettingsMutation.mutate({
+                                  tasksDatabaseId: dbId,
+                                  tasksDatabaseName: dbName,
+                                })
+                              }
                               title="Select Tasks Database"
                               description="Choose a Notion database to sync confirmed AI tasks to."
                               trigger={
-                                <Button variant="outline" size="sm" data-testid="button-select-tasks-database">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  data-testid="button-select-tasks-database"
+                                >
                                   <Database className="w-3 h-3 mr-2" />
-                                  {notionConnection.tasksDatabaseId 
-                                    ? notionConnection.tasksDatabaseName || "Change Database"
+                                  {notionConnection.tasksDatabaseId
+                                    ? notionConnection.tasksDatabaseName ||
+                                      "Change Database"
                                     : "Select Database"}
                                 </Button>
                               }
                             />
                             {!notionConnection.tasksDatabaseId && (
-                              <span className="text-xs text-amber-600">Required</span>
+                              <span className="text-xs text-amber-600">
+                                Required
+                              </span>
                             )}
                           </div>
                         )}
@@ -766,45 +1006,66 @@ export default function ConnectDataSource() {
                             <Switch
                               id="sync-tags"
                               checked={notionConnection.syncTags ?? true}
-                              onCheckedChange={(checked) => updateSyncSettingsMutation.mutate({ syncTags: checked })}
+                              onCheckedChange={(checked) =>
+                                updateSyncSettingsMutation.mutate({
+                                  syncTags: checked,
+                                })
+                              }
                               disabled={updateSyncSettingsMutation.isPending}
                               data-testid="switch-sync-tags"
                             />
-                            <Label htmlFor="sync-tags" className="cursor-pointer">
+                            <Label
+                              htmlFor="sync-tags"
+                              className="cursor-pointer"
+                            >
                               <span className="font-medium flex items-center gap-2">
                                 <Tag className="w-4 h-4 text-muted-foreground" />
                                 Guest Feedback Tags
                               </span>
                               <p className="text-xs text-muted-foreground">
-                                Tag name, sentiment, theme, verbatim, and AI suggested task
+                                Tag name, sentiment, theme, verbatim, and AI
+                                suggested task
                               </p>
                             </Label>
                           </div>
                         </div>
-                        
+
                         {/* Database selector for tags */}
                         {notionConnection.syncTags !== false && (
                           <div className="ml-6 flex items-center gap-2">
                             <NotionDatabaseSelector
-                              currentDatabaseId={notionConnection.tagsDatabaseId}
-                              currentDatabaseName={notionConnection.tagsDatabaseName}
-                              onSelect={(dbId, dbName) => updateSyncSettingsMutation.mutate({ 
-                                tagsDatabaseId: dbId, 
-                                tagsDatabaseName: dbName 
-                              })}
+                              currentDatabaseId={
+                                notionConnection.tagsDatabaseId
+                              }
+                              currentDatabaseName={
+                                notionConnection.tagsDatabaseName
+                              }
+                              onSelect={(dbId, dbName) =>
+                                updateSyncSettingsMutation.mutate({
+                                  tagsDatabaseId: dbId,
+                                  tagsDatabaseName: dbName,
+                                })
+                              }
                               title="Select Tags Database"
                               description="Choose a Notion database to sync guest feedback tags to."
                               trigger={
-                                <Button variant="outline" size="sm" data-testid="button-select-tags-database">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  data-testid="button-select-tags-database"
+                                >
                                   <Database className="w-3 h-3 mr-2" />
-                                  {notionConnection.tagsDatabaseId 
-                                    ? notionConnection.tagsDatabaseName || "Change Database"
+                                  {notionConnection.tagsDatabaseId
+                                    ? notionConnection.tagsDatabaseName ||
+                                      "Change Database"
                                     : "Select Database"}
                                 </Button>
                               }
                             />
                             {!notionConnection.tagsDatabaseId && (
-                              <span className="text-xs text-amber-600">Required</span>
+                              <span className="text-xs text-amber-600">
+                                Required
+                              </span>
                             )}
                           </div>
                         )}
@@ -817,19 +1078,33 @@ export default function ConnectDataSource() {
                           Property Filter
                         </h4>
                         <p className="text-xs text-muted-foreground">
-                          Select which properties to sync. Leave empty to sync all properties.
+                          Select which properties to sync. Leave empty to sync
+                          all properties.
                         </p>
                         <div className="max-h-48 overflow-y-auto space-y-2 p-3 rounded-lg border bg-muted/30">
                           {listings && listings.length > 0 ? (
                             listings.map((listing) => (
-                              <div key={listing.id} className="flex items-center gap-2">
+                              <div
+                                key={listing.id}
+                                className="flex items-center gap-2"
+                              >
                                 <Checkbox
                                   id={`property-${listing.id}`}
-                                  checked={localPropertyFilter.includes(listing.id)}
-                                  onCheckedChange={(checked) => handlePropertyFilterChange(listing.id, !!checked)}
+                                  checked={localPropertyFilter.includes(
+                                    listing.id,
+                                  )}
+                                  onCheckedChange={(checked) =>
+                                    handlePropertyFilterChange(
+                                      listing.id,
+                                      !!checked,
+                                    )
+                                  }
                                   data-testid={`checkbox-property-${listing.id}`}
                                 />
-                                <Label htmlFor={`property-${listing.id}`} className="text-sm cursor-pointer">
+                                <Label
+                                  htmlFor={`property-${listing.id}`}
+                                  className="text-sm cursor-pointer"
+                                >
                                   {listing.name}
                                 </Label>
                               </div>
@@ -842,7 +1117,11 @@ export default function ConnectDataSource() {
                         </div>
                         {localPropertyFilter.length > 0 && (
                           <p className="text-xs text-muted-foreground">
-                            {localPropertyFilter.length} {localPropertyFilter.length === 1 ? 'property' : 'properties'} selected
+                            {localPropertyFilter.length}{" "}
+                            {localPropertyFilter.length === 1
+                              ? "property"
+                              : "properties"}{" "}
+                            selected
                           </p>
                         )}
                       </div>
@@ -853,14 +1132,19 @@ export default function ConnectDataSource() {
                           <Switch
                             id="auto-sync"
                             checked={notionConnection.autoSyncEnabled || false}
-                            onCheckedChange={(checked) => toggleAutoSyncMutation.mutate(checked)}
+                            onCheckedChange={(checked) =>
+                              toggleAutoSyncMutation.mutate(checked)
+                            }
                             disabled={toggleAutoSyncMutation.isPending}
                             data-testid="switch-auto-sync"
                           />
                           <Label htmlFor="auto-sync" className="cursor-pointer">
-                            <span className="font-medium">Auto-sync enabled</span>
+                            <span className="font-medium">
+                              Auto-sync enabled
+                            </span>
                             <p className="text-xs text-muted-foreground">
-                              Automatically sync new data to Notion as it's created
+                              Automatically sync new data to Notion as it's
+                              created
                             </p>
                           </Label>
                         </div>
@@ -874,11 +1158,11 @@ export default function ConnectDataSource() {
               ) : (
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
-                    Connect your Notion workspace to sync reservations, confirmed tasks,
-                    and guest feedback to Notion databases. Choose what data to sync
-                    and which properties to include.
+                    Connect your Notion workspace to sync reservations,
+                    confirmed tasks, and guest feedback to Notion databases.
+                    Choose what data to sync and which properties to include.
                   </p>
-                  <Button 
+                  <Button
                     onClick={handleConnectNotion}
                     disabled={isConnectingNotion || !activeWorkspace}
                     data-testid="button-connect-notion"
@@ -916,7 +1200,10 @@ export default function ConnectDataSource() {
                     <div className="flex items-center gap-2">
                       <CardTitle>Slack</CardTitle>
                       {(activeWorkspace as any)?.slackWebhookUrl && (
-                        <Badge variant="default" className="bg-emerald-500 hover:bg-emerald-600">
+                        <Badge
+                          variant="default"
+                          className="bg-emerald-500 hover:bg-emerald-600"
+                        >
                           Connected
                         </Badge>
                       )}
@@ -935,9 +1222,12 @@ export default function ConnectDataSource() {
                     <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                       <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
                       <div className="flex-1">
-                        <p className="font-medium text-emerald-600 dark:text-emerald-400">Slack alerts enabled</p>
+                        <p className="font-medium text-emerald-600 dark:text-emerald-400">
+                          Slack alerts enabled
+                        </p>
                         <p className="text-sm text-muted-foreground">
-                          Notifications will be sent when new sentiment scores are generated.
+                          Notifications will be sent when new sentiment scores
+                          are generated.
                         </p>
                       </div>
                     </div>
@@ -954,8 +1244,14 @@ export default function ConnectDataSource() {
                     </div>
                     <div className="flex items-center gap-3">
                       <Button
-                        onClick={() => saveSlackWebhookMutation.mutate(slackWebhookUrl)}
-                        disabled={saveSlackWebhookMutation.isPending || slackWebhookUrl === ((activeWorkspace as any)?.slackWebhookUrl || "")}
+                        onClick={() =>
+                          saveSlackWebhookMutation.mutate(slackWebhookUrl)
+                        }
+                        disabled={
+                          saveSlackWebhookMutation.isPending ||
+                          slackWebhookUrl ===
+                            ((activeWorkspace as any)?.slackWebhookUrl || "")
+                        }
                         variant="outline"
                         data-testid="button-save-slack-webhook"
                       >
@@ -984,8 +1280,9 @@ export default function ConnectDataSource() {
                 ) : (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      Connect a Slack Incoming Webhook to receive automated alerts when new AI Sentiment Scores
-                      are generated for your reservations.
+                      Connect a Slack Incoming Webhook to receive automated
+                      alerts when new AI Sentiment Scores are generated for your
+                      reservations.
                     </p>
                     <div className="space-y-2">
                       <Label htmlFor="slack-webhook-url">Webhook URL</Label>
@@ -998,12 +1295,18 @@ export default function ConnectDataSource() {
                         data-testid="input-slack-webhook-url"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Create an Incoming Webhook in your Slack workspace settings to get the URL.
+                        Create an Incoming Webhook in your Slack workspace
+                        settings to get the URL.
                       </p>
                     </div>
                     <Button
-                      onClick={() => saveSlackWebhookMutation.mutate(slackWebhookUrl)}
-                      disabled={saveSlackWebhookMutation.isPending || !slackWebhookUrl.trim()}
+                      onClick={() =>
+                        saveSlackWebhookMutation.mutate(slackWebhookUrl)
+                      }
+                      disabled={
+                        saveSlackWebhookMutation.isPending ||
+                        !slackWebhookUrl.trim()
+                      }
                       data-testid="button-connect-slack"
                     >
                       {saveSlackWebhookMutation.isPending ? (
@@ -1041,7 +1344,10 @@ export default function ConnectDataSource() {
             <CardContent>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="integration-name" className="text-sm font-medium">
+                  <Label
+                    htmlFor="integration-name"
+                    className="text-sm font-medium"
+                  >
                     What integration do you want?
                   </Label>
                   <Input
@@ -1053,7 +1359,10 @@ export default function ConnectDataSource() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="integration-description" className="text-sm font-medium">
+                  <Label
+                    htmlFor="integration-description"
+                    className="text-sm font-medium"
+                  >
                     What do you want it to do?
                   </Label>
                   <Textarea
@@ -1068,7 +1377,10 @@ export default function ConnectDataSource() {
                 </div>
                 <Button
                   onClick={handleSubmitSuggestion}
-                  disabled={submitIntegrationSuggestion.isPending || !integrationName.trim()}
+                  disabled={
+                    submitIntegrationSuggestion.isPending ||
+                    !integrationName.trim()
+                  }
                   className="w-full"
                   data-testid="button-submit-integration-suggestion"
                 >

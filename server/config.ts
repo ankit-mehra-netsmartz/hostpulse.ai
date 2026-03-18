@@ -52,6 +52,8 @@ export const config = {
     redirectUriDev: process.env.HOSPITABLE_REDIRECT_URI_DEV,
     webhookSecret: process.env.HOSPITABLE_WEBHOOK_SECRET,
     webhookSecretDev: process.env.HOSPITABLE_WEBHOOK_SECRET_DEV,
+    connectToken: process.env.HOSPITABLE_CONNECT_TOKEN,
+    connectWebhookSecret: process.env.HOSPITABLE_CONNECT_WEBHOOK_SECRET,
   },
 
   notion: {
