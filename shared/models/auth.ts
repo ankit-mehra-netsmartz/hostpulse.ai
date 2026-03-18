@@ -35,7 +35,7 @@ export const sessions = pgTable(
 // Account type for tracking how user signed up
 export const ACCOUNT_TYPES = {
   GOOGLE: "google",
-  MAGIC: "magic",
+  EMAIL: "email",
 } as const;
 
 export type AccountType = (typeof ACCOUNT_TYPES)[keyof typeof ACCOUNT_TYPES];

@@ -69,6 +69,7 @@ class AuthStorage implements IAuthStorage {
               lastName: userData.lastName ?? existingByEmail.lastName,
               profileImageUrl:
                 userData.profileImageUrl ?? existingByEmail.profileImageUrl,
+              accountType: accountType ?? existingByEmail.accountType,
               lastLoginAt: now,
               updatedAt: now,
             })
@@ -85,13 +86,14 @@ class AuthStorage implements IAuthStorage {
         .insert(users)
         .values({
           ...userData,
-          accountType: accountType || ACCOUNT_TYPES.MAGIC,
+          accountType: accountType || ACCOUNT_TYPES.EMAIL,
           lastLoginAt: now,
         })
         .onConflictDoUpdate({
           target: users.id,
           set: {
             ...userData,
+            ...(accountType ? { accountType } : {}),
             lastLoginAt: now,
             updatedAt: now,
           },
@@ -126,10 +128,10 @@ class AuthStorage implements IAuthStorage {
         return { user: existing, isGoogleAccount: true };
       }
 
-      if (existing.accountType !== ACCOUNT_TYPES.MAGIC) {
+      if (existing.accountType !== ACCOUNT_TYPES.EMAIL) {
         const [updated] = await db
           .update(users)
-          .set({ accountType: ACCOUNT_TYPES.MAGIC, updatedAt: new Date() })
+          .set({ accountType: ACCOUNT_TYPES.EMAIL, updatedAt: new Date() })
           .where(eq(users.id, existing.id))
           .returning();
         return { user: updated, isNewUser: false, isGoogleAccount: false };
@@ -144,7 +146,7 @@ class AuthStorage implements IAuthStorage {
         email,
         firstName: firstName ?? null,
         lastName: lastName ?? null,
-        accountType: ACCOUNT_TYPES.MAGIC,
+        accountType: ACCOUNT_TYPES.EMAIL,
         emailVerified: false,
         lastLoginAt: new Date(),
       })
