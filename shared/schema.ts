@@ -41,7 +41,7 @@ export const dataSourcesRelations = relations(dataSources, ({ many }) => ({
 // Listings
 export const listings = pgTable("listings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  dataSourceId: varchar("data_source_id").notNull(),
+  dataSourceId: varchar("data_source_id").notNull().references(() => dataSources.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
   externalId: varchar("external_id"),
@@ -81,7 +81,7 @@ export const listings = pgTable("listings", {
   webhookStatus: varchar("webhook_status").default("active"),
   webhookPendingData: jsonb("webhook_pending_data"),  // Stores incoming webhook data for user review
   platformIds: jsonb("platform_ids").$type<{ airbnb?: string; vrbo?: string; bookingCom?: string; [key: string]: string | undefined }>(),
-  defaultProcedureId: varchar("default_procedure_id"),
+  defaultProcedureId: varchar("default_procedure_id").references(() => procedures.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -152,7 +152,7 @@ export interface CategoryAnalysis {
 // Listing Analyses
 export const listingAnalyses = pgTable("listing_analyses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  listingId: varchar("listing_id").notNull(),
+  listingId: varchar("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
   score: real("score"),
@@ -210,7 +210,7 @@ export const aiUsageLogs = pgTable("ai_usage_logs", {
   inputTokens: integer("input_tokens").notNull().default(0),
   outputTokens: integer("output_tokens").notNull().default(0),
   estimatedCost: real("estimated_cost").notNull().default(0),
-  listingId: varchar("listing_id"),
+  listingId: varchar("listing_id").references(() => listings.id, { onDelete: "set null" }),
   listingName: varchar("listing_name"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -224,8 +224,8 @@ export const webhookLogs = pgTable("webhook_logs", {
   statusCode: integer("status_code"),
   payload: jsonb("payload"),
   errorMessage: varchar("error_message"),
-  reservationId: varchar("reservation_id"),
-  listingId: varchar("listing_id"),
+  reservationId: varchar("reservation_id").references(() => reservations.id, { onDelete: "set null" }),
+  listingId: varchar("listing_id").references(() => listings.id, { onDelete: "set null" }),
   workspaceId: varchar("workspace_id"),
   processingTimeMs: integer("processing_time_ms"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -241,7 +241,7 @@ export interface PhotoTechnicalDetails {
 
 export const photoAnalyses = pgTable("photo_analyses", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  listingId: varchar("listing_id").notNull(),
+  listingId: varchar("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
   photoIndex: integer("photo_index").notNull(),
   photoUrl: text("photo_url").notNull(),
   imageWidth: integer("image_width"),
@@ -299,7 +299,7 @@ export interface CategoryRatings {
 // Reservations (synced from Hospitable)
 export const reservations = pgTable("reservations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  listingId: varchar("listing_id").notNull(),
+  listingId: varchar("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
   externalId: varchar("external_id").notNull(),
@@ -389,9 +389,9 @@ export const tags = pgTable("tags", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
-  listingId: varchar("listing_id").notNull(),
-  reservationId: varchar("reservation_id").notNull(),
-  themeId: varchar("theme_id"),
+  listingId: varchar("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
+  reservationId: varchar("reservation_id").notNull().references(() => reservations.id, { onDelete: "cascade" }),
+  themeId: varchar("theme_id").references(() => themes.id, { onDelete: "set null" }),
   pendingThemeName: varchar("pending_theme_name"),
   pendingThemeIcon: varchar("pending_theme_icon"),
   name: varchar("name").notNull(),
@@ -429,9 +429,9 @@ export const tasks = pgTable("tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
-  tagId: varchar("tag_id"),
-  themeId: varchar("theme_id"),
-  listingId: varchar("listing_id"),
+  tagId: varchar("tag_id").references(() => tags.id, { onDelete: "set null" }),
+  themeId: varchar("theme_id").references(() => themes.id, { onDelete: "set null" }),
+  listingId: varchar("listing_id").references(() => listings.id, { onDelete: "set null" }),
   title: varchar("title").notNull(),
   description: text("description"),
   priority: varchar("priority").notNull().default("medium"),
@@ -595,7 +595,7 @@ export const workspaces = pgTable("workspaces", {
 
 export const workspaceMembers = pgTable("workspace_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   userId: varchar("user_id"),
   invitedEmail: varchar("invited_email"),
   invitedBy: varchar("invited_by"),
@@ -657,7 +657,7 @@ export type TeamMemberStatus = typeof TEAM_MEMBER_STATUS[keyof typeof TEAM_MEMBE
 
 export const teams = pgTable("teams", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: varchar("name").notNull(),
   description: text("description"),
   createdBy: varchar("created_by").notNull(),
@@ -671,7 +671,7 @@ export const teamsRelations = relations(teams, ({ many }) => ({
 
 export const teamMembers = pgTable("team_members", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  teamId: varchar("team_id").notNull(),
+  teamId: varchar("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
   userId: varchar("user_id"),
   invitedEmail: varchar("invited_email"),
   invitedBy: varchar("invited_by"),
@@ -725,7 +725,7 @@ export interface TeamMemberWithUser extends TeamMember {
 // Reviews Summaries - Cached AI-generated summaries for properties and property combinations
 export const reviewsSummaries = pgTable("reviews_summaries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   listingIds: jsonb("listing_ids").$type<string[]>().notNull(),
   listingIdsHash: varchar("listing_ids_hash").notNull(),
   performanceInsight: text("performance_insight"),
@@ -754,7 +754,7 @@ export type ReviewsSummary = typeof reviewsSummaries.$inferSelect;
 export const lumiViews = pgTable("lumi_views", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: varchar("name").notNull(),
   description: text("description"),
   filters: jsonb("filters").$type<{
@@ -783,9 +783,9 @@ export type LumiView = typeof lumiViews.$inferSelect;
 export const lumiQueries = pgTable("lumi_queries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   conversationId: varchar("conversation_id"), // Groups related queries for follow-up questions
-  viewId: varchar("view_id"),
+  viewId: varchar("view_id").references(() => lumiViews.id, { onDelete: "set null" }),
   prompt: text("prompt").notNull(),
   response: text("response"),
   responseType: varchar("response_type").default("text"), // text, chart, table, document
@@ -844,8 +844,8 @@ export type LumiWorkflow = typeof lumiWorkflows.$inferSelect;
 export const lumiDocuments = pgTable("lumi_documents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  workspaceId: varchar("workspace_id").notNull(),
-  queryId: varchar("query_id"),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  queryId: varchar("query_id").references(() => lumiQueries.id, { onDelete: "set null" }),
   title: varchar("title").notNull(),
   content: text("content"),
   documentType: varchar("document_type").default("report"), // report, chart, summary
@@ -910,11 +910,11 @@ export type AiPrompt = typeof aiPrompts.$inferSelect;
 // Generated Content - Stores AI-generated listing content (titles, descriptions)
 export const generatedContent = pgTable("generated_content", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  listingId: varchar("listing_id").notNull(),
-  workspaceId: varchar("workspace_id").notNull(),
+  listingId: varchar("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   contentType: varchar("content_type").notNull(), // "titles", "about", "the_space"
   content: jsonb("content").$type<GeneratedTitles | GeneratedDescription>(),
-  promptId: varchar("prompt_id"), // which AI prompt was used
+  promptId: varchar("prompt_id").references(() => aiPrompts.id, { onDelete: "set null" }), // which AI prompt was used
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -963,8 +963,8 @@ export interface HostProfileData {
 
 export const airbnbScans = pgTable("airbnb_scans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  listingId: varchar("listing_id").notNull(),
-  workspaceId: varchar("workspace_id").notNull(),
+  listingId: varchar("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   airbnbUrl: text("airbnb_url").notNull(),
   status: varchar("status").notNull().default("pending"), // pending, scanning, completed, failed
   errorMessage: text("error_message"),
@@ -1033,8 +1033,8 @@ export interface SpeedTestResults {
 
 export const speedTestRuns = pgTable("speed_test_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
-  listingId: varchar("listing_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  listingId: varchar("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
   listingName: varchar("listing_name"),
   openaiModel: varchar("openai_model").notNull(),
   grokModel: varchar("grok_model").notNull(),
@@ -1201,9 +1201,9 @@ export interface GpsLocation {
 // Procedure templates
 export const procedures = pgTable("procedures", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   createdByUserId: varchar("created_by_user_id").notNull(),
-  listingId: varchar("listing_id"), // Optional property association
+  listingId: varchar("listing_id").references(() => listings.id, { onDelete: "set null" }), // Optional property association
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   status: varchar("status", { length: 20 }).notNull().default("draft"),
@@ -1227,14 +1227,14 @@ export const proceduresRelations = relations(procedures, ({ one, many }) => ({
 // Individual steps within a procedure
 export const procedureSteps = pgTable("procedure_steps", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  procedureId: varchar("procedure_id").notNull(),
+  procedureId: varchar("procedure_id").notNull().references(() => procedures.id, { onDelete: "cascade" }),
   stepOrder: integer("step_order").notNull(),
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
   // Module grouping - steps can be grouped into collapsible sections
   moduleTitle: varchar("module_title", { length: 255 }),
   moduleOrder: integer("module_order"), // Order of the module section within the procedure
-  sourceModuleId: varchar("source_module_id"), // Reference to the original task module template if copied from one
+  sourceModuleId: varchar("source_module_id").references(() => taskModules.id, { onDelete: "set null" }), // Reference to the original task module template if copied from one
   // Media attachments stored as JSON array
   media: jsonb("media").$type<ProcedureStepMedia[]>(),
   // Voice note for step description
@@ -1267,8 +1267,8 @@ export const procedureStepsRelations = relations(procedureSteps, ({ one }) => ({
 // Links a procedure to a task
 export const procedureAssignments = pgTable("procedure_assignments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  taskId: varchar("task_id").notNull(),
-  procedureId: varchar("procedure_id").notNull(),
+  taskId: varchar("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+  procedureId: varchar("procedure_id").notNull().references(() => procedures.id, { onDelete: "cascade" }),
   assignedByUserId: varchar("assigned_by_user_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -1287,7 +1287,7 @@ export const procedureAssignmentsRelations = relations(procedureAssignments, ({ 
 // Tracks a user's overall progress on a procedure for a specific task
 export const procedureCompletions = pgTable("procedure_completions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  procedureAssignmentId: varchar("procedure_assignment_id").notNull(),
+  procedureAssignmentId: varchar("procedure_assignment_id").notNull().references(() => procedureAssignments.id, { onDelete: "cascade" }),
   completedByUserId: varchar("completed_by_user_id").notNull(),
   status: varchar("status", { length: 20 }).notNull().default("not_started"),
   // Voice update functionality
@@ -1313,8 +1313,8 @@ export const procedureCompletionsRelations = relations(procedureCompletions, ({ 
 // Individual step completion tracking with verification
 export const stepCompletions = pgTable("step_completions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  procedureCompletionId: varchar("procedure_completion_id").notNull(),
-  procedureStepId: varchar("procedure_step_id").notNull(),
+  procedureCompletionId: varchar("procedure_completion_id").notNull().references(() => procedureCompletions.id, { onDelete: "cascade" }),
+  procedureStepId: varchar("procedure_step_id").notNull().references(() => procedureSteps.id, { onDelete: "cascade" }),
   isCompleted: boolean("is_completed").notNull().default(false),
   // Verification photo with GPS
   verificationPhotoUrl: text("verification_photo_url"),
@@ -1396,7 +1396,7 @@ export const procedureTemplates = pgTable("procedure_templates", {
 
 export const procedureTemplateSteps = pgTable("procedure_template_steps", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  templateId: varchar("template_id").notNull(),
+  templateId: varchar("template_id").notNull().references(() => procedureTemplates.id, { onDelete: "cascade" }),
   stepOrder: integer("step_order").notNull(),
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
@@ -1459,7 +1459,7 @@ export interface ProcedureCompletionWithDetails extends ProcedureCompletion {
 // Task Modules - Reusable templates containing grouped items
 export const taskModules = pgTable("task_modules", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
   category: varchar("category", { length: 100 }),
@@ -1476,7 +1476,7 @@ export const taskModulesRelations = relations(taskModules, ({ many }) => ({
 // Task Module Items - Individual items within a module template
 export const taskModuleItems = pgTable("task_module_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  moduleId: varchar("module_id").notNull(),
+  moduleId: varchar("module_id").notNull().references(() => taskModules.id, { onDelete: "cascade" }),
   itemOrder: integer("item_order").notNull(),
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
@@ -1527,10 +1527,10 @@ export interface TaskModuleWithItems extends TaskModule {
 // Folders - Organize files and links into categories
 export const folders = pgTable("folders", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: varchar("name").notNull(),
   description: text("description"),
-  parentId: varchar("parent_id"), // For nested folders (optional)
+  parentId: varchar("parent_id").references(() => folders.id, { onDelete: "set null" }), // For nested folders (optional)
   color: varchar("color"), // Optional color for folder icon
   icon: varchar("icon"), // Optional icon name
   createdBy: varchar("created_by"),
@@ -1555,8 +1555,8 @@ export const FOLDER_ITEM_TYPES = {
 // Folder Items - Files (PDFs, images) and links (videos, external resources)
 export const folderItems = pgTable("folder_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
-  folderId: varchar("folder_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  folderId: varchar("folder_id").notNull().references(() => folders.id, { onDelete: "cascade" }),
   type: varchar("type").notNull(), // "file" or "link"
   name: varchar("name").notNull(),
   description: text("description"),
@@ -1587,11 +1587,11 @@ export const folderItemsRelations = relations(folderItems, ({ one, many }) => ({
 // Task Attachments - Link folder items to tasks/sub-tasks
 export const taskAttachments = pgTable("task_attachments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
-  folderItemId: varchar("folder_item_id").notNull(),
-  taskId: varchar("task_id"), // Link to main task
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  folderItemId: varchar("folder_item_id").notNull().references(() => folderItems.id, { onDelete: "cascade" }),
+  taskId: varchar("task_id").references(() => tasks.id, { onDelete: "set null" }), // Link to main task
   subTaskId: varchar("sub_task_id"), // Link to sub-task (optional)
-  procedureStepId: varchar("procedure_step_id"), // Link to procedure step (optional)
+  procedureStepId: varchar("procedure_step_id").references(() => procedureSteps.id, { onDelete: "set null" }), // Link to procedure step (optional)
   attachedBy: varchar("attached_by"),
   attachedAt: timestamp("attached_at").defaultNow(),
 });
@@ -1643,7 +1643,7 @@ export interface FolderWithItems extends Folder {
 // Notion Connections - OAuth connections to Notion workspaces for data sync
 export const notionConnections = pgTable("notion_connections", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(), // HostPulse workspace
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }), // HostPulse workspace
   notionWorkspaceId: varchar("notion_workspace_id").notNull(), // Notion workspace ID
   notionWorkspaceName: varchar("notion_workspace_name"),
   notionWorkspaceIcon: varchar("notion_workspace_icon"),
@@ -1686,7 +1686,7 @@ export type NotionConnection = typeof notionConnections.$inferSelect;
 export const reports = pgTable("reports", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: varchar("name").notNull(),
   reportType: varchar("report_type").notNull(), // "staff_meeting" | "repeat_guests"
   dateRangeType: varchar("date_range_type").notNull().default("last_30_days"), // "last_7_days" | "last_30_days" | "last_90_days" | "custom"
@@ -1720,7 +1720,7 @@ export type Report = typeof reports.$inferSelect;
 export const nudgeCampaigns = pgTable("nudge_campaigns", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   name: varchar("name").notNull(),
   description: text("description"),
   status: varchar("status").notNull().default("draft"), // draft, active, paused, completed
@@ -1740,12 +1740,12 @@ export const nudgeCampaignsRelations = relations(nudgeCampaigns, ({ many }) => (
 // Nudge Conversations - Individual SMS conversations with guests
 export const nudgeConversations = pgTable("nudge_conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  campaignId: varchar("campaign_id").notNull(),
-  reservationId: varchar("reservation_id"),
-  workspaceId: varchar("workspace_id").notNull(),
+  campaignId: varchar("campaign_id").notNull().references(() => nudgeCampaigns.id, { onDelete: "cascade" }),
+  reservationId: varchar("reservation_id").references(() => reservations.id, { onDelete: "set null" }),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   guestName: varchar("guest_name"),
   guestPhone: varchar("guest_phone").notNull(),
-  listingId: varchar("listing_id"),
+  listingId: varchar("listing_id").references(() => listings.id, { onDelete: "set null" }),
   listingName: varchar("listing_name"),
   status: varchar("status").notNull().default("pending"), // pending, active, completed, opted_out
   startedAt: timestamp("started_at"),
@@ -1776,7 +1776,7 @@ export const nudgeConversationsRelations = relations(nudgeConversations, ({ one,
 // Nudge Messages - Individual messages in a conversation
 export const nudgeMessages = pgTable("nudge_messages", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  conversationId: varchar("conversation_id").notNull(),
+  conversationId: varchar("conversation_id").notNull().references(() => nudgeConversations.id, { onDelete: "cascade" }),
   direction: varchar("direction").notNull(), // inbound (from guest) or outbound (to guest)
   content: text("content").notNull(),
   twilioMessageId: varchar("twilio_message_id"),
@@ -1871,10 +1871,10 @@ export const cleanersRelations = relations(cleaners, ({ one, many }) => ({
 
 export const cleanerAssignments = pgTable("cleaner_assignments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
-  cleanerId: varchar("cleaner_id").notNull(),
-  listingId: varchar("listing_id").notNull(),
-  procedureId: varchar("procedure_id"),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  cleanerId: varchar("cleaner_id").notNull().references(() => cleaners.id, { onDelete: "cascade" }),
+  listingId: varchar("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
+  procedureId: varchar("procedure_id").references(() => procedures.id, { onDelete: "set null" }),
   assignmentMode: varchar("assignment_mode", { length: 20 }).notNull().default("manual"), // auto, manual
   defaultMemberId: varchar("default_member_id"), // member cleaner auto-assigned when assignmentMode=auto
   isActive: boolean("is_active").notNull().default(true),
@@ -1898,13 +1898,13 @@ export const cleanerAssignmentsRelations = relations(cleanerAssignments, ({ one 
 
 export const cleaningTasks = pgTable("cleaning_tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
-  cleanerId: varchar("cleaner_id").notNull(),
-  assignedMemberId: varchar("assigned_member_id"), // specific team member when cleaner is a company
-  listingId: varchar("listing_id").notNull(),
-  reservationId: varchar("reservation_id"),
-  assignmentId: varchar("assignment_id"),
-  procedureId: varchar("procedure_id"),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  cleanerId: varchar("cleaner_id").notNull().references(() => cleaners.id, { onDelete: "cascade" }),
+  assignedMemberId: varchar("assigned_member_id").references(() => cleaners.id, { onDelete: "set null" }), // specific team member when cleaner is a company
+  listingId: varchar("listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
+  reservationId: varchar("reservation_id").references(() => reservations.id, { onDelete: "set null" }),
+  assignmentId: varchar("assignment_id").references(() => cleanerAssignments.id, { onDelete: "set null" }),
+  procedureId: varchar("procedure_id").references(() => procedures.id, { onDelete: "set null" }),
   scheduledDate: timestamp("scheduled_date").notNull(),
   guestName: varchar("guest_name", { length: 255 }),
   guestCheckoutTime: varchar("guest_checkout_time", { length: 50 }),
@@ -1945,7 +1945,7 @@ export const cleaningTasksRelations = relations(cleaningTasks, ({ one, many }) =
 
 export const cleaningTaskItems = pgTable("cleaning_task_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  cleaningTaskId: varchar("cleaning_task_id").notNull(),
+  cleaningTaskId: varchar("cleaning_task_id").notNull().references(() => cleaningTasks.id, { onDelete: "cascade" }),
   stepOrder: integer("step_order").notNull(),
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
@@ -1970,7 +1970,7 @@ export const cleaningTaskItemsRelations = relations(cleaningTaskItems, ({ one })
 // Notification Templates for Cleaner Scheduling
 export const notificationTemplates = pgTable("notification_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
   type: varchar("type", { length: 50 }).notNull(), // reminder_email, reminder_sms, cancelled_email, cancelled_sms, changed_email, changed_sms
   subject: varchar("subject", { length: 500 }),
   body: text("body").notNull(),
@@ -2064,9 +2064,9 @@ export interface CleaningTaskWithDetails extends CleaningTask {
 
 export const reviewRemovalCases = pgTable("review_removal_cases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  workspaceId: varchar("workspace_id").notNull(),
-  reservationId: varchar("reservation_id"),
-  listingId: varchar("listing_id"),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  reservationId: varchar("reservation_id").references(() => reservations.id, { onDelete: "set null" }),
+  listingId: varchar("listing_id").references(() => listings.id, { onDelete: "set null" }),
   userId: varchar("user_id").notNull(),
   caseNumber: varchar("case_number").notNull(),
   guestName: varchar("guest_name"),
