@@ -115,6 +115,25 @@ interface ConnectListing {
   check_in?: string;
   check_out?: string | null;
   fees?: unknown[];
+  channel?: {
+    id?: string;
+    name?: string;
+    platform?: string;
+    platform_id?: string;
+    email?: string;
+    picture?: string;
+    location?: string | null;
+    description?: string | null;
+    first_connected_at?: string;
+    ready_to_migrate?: boolean;
+  };
+  channels?: Array<{
+    id?: string;
+    name?: string;
+    platform?: string;
+    platform_id?: string;
+    email?: string;
+  }>;
 }
 
 interface ChannelListingsResponse {
@@ -473,6 +492,9 @@ export const connectHospitableService = {
           platformIds: {
             airbnb: listing.platform_id,
           },
+          // Owner info comes from the Airbnb channel object
+          ownerName: listing.channel?.name || listing.channels?.[0]?.name || undefined,
+          accountEmail: listing.channel?.email || listing.channels?.[0]?.email || undefined,
           // Mark as active synced listing from Hospitable Connect
           webhookStatus: "active" as const,
           lastSyncedAt: new Date(),

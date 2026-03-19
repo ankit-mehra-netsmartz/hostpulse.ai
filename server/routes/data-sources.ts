@@ -850,6 +850,10 @@ export function registerDataSourceRoutes(
             name: listing.public_name || listing.private_name || listing.name || "Unnamed Listing",
             public_name: listing.public_name || listing.private_name || listing.name || "Unnamed Listing",
             picture: listing.picture,
+            owner: {
+              name: listing.channel?.name || listing.channels?.[0]?.name || undefined,
+              email: listing.channel?.email || listing.channels?.[0]?.email || undefined,
+            },
             listings: [{ platform: listing.platform || "airbnb", platform_id: listing.platform_id }],
           }));
         } else {
@@ -1022,6 +1026,10 @@ export function registerDataSourceRoutes(
               amenities: listing.amenities,
               description: listing.description,
               summary: listing.summary,
+              owner: {
+                name: listing.channel?.name || listing.channels?.[0]?.name || undefined,
+                email: listing.channel?.email || listing.channels?.[0]?.email || undefined,
+              },
               listings: [{ platform: listing.platform || "airbnb", platform_id: listing.platform_id }],
               // Attach source metadata so client knows which data source to import through
               _dataSourceId: dataSource.id,
