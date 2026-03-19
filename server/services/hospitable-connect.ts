@@ -473,15 +473,24 @@ export const connectHospitableService = {
           platformIds: {
             airbnb: listing.platform_id,
           },
+          // Mark as active synced listing from Hospitable Connect
+          webhookStatus: "active" as const,
+          lastSyncedAt: new Date(),
           updatedAt: new Date(),
         };
 
         if (existingListing) {
+          logger.info(
+            `[Connect] Updating listing ${existingListing.id} (externalId=${listing.id}, airbnbId=${listing.platform_id}) for dataSource ${dataSourceId}`,
+          );
           await db
             .update(listings)
             .set(listingData)
             .where(eq(listings.id, existingListing.id));
         } else {
+          logger.info(
+            `[Connect] Inserting new listing externalId=${listing.id} (airbnbId=${listing.platform_id}, name="${listingData.name}") for dataSource ${dataSourceId}`,
+          );
           await db.insert(listings).values({
             dataSourceId,
             externalId: listing.id,

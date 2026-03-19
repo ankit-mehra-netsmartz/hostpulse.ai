@@ -186,11 +186,11 @@ export default function PropertySelection() {
     queryKey: ["/api/data-sources"],
   });
 
-  const connectedSource = dataSources?.find(
-    (ds) =>
-      ds.isConnected &&
-      (ds.provider === "hospitable" || ds.provider === "airbnb"),
-  );
+  // Prefer the Hospitable Public API source — it has richer data (details, images).
+  // Fall back to Airbnb Connect if no Hospitable source is connected.
+  const connectedSource =
+    dataSources?.find((ds) => ds.isConnected && ds.provider === "hospitable") ??
+    dataSources?.find((ds) => ds.isConnected && ds.provider === "airbnb");
 
   const { data: existingListings, isLoading: isLoadingListings } = useQuery<
     Listing[]
@@ -200,14 +200,15 @@ export default function PropertySelection() {
 
   const [showNewPropertiesCheck, setShowNewPropertiesCheck] = useState(false);
 
+  // Fetch from ALL connected data sources at once
   const {
     data: propertiesResponse,
     isLoading: isLoadingProperties,
     error: propertiesError,
     refetch: refetchProperties,
-  } = useQuery<{ data: HospitableProperty[] }>({
-    queryKey: ["/api/data-sources", connectedSource?.id, "properties"],
-    enabled: !!connectedSource?.id && showNewPropertiesCheck,
+  } = useQuery<{ data: Array<HospitableProperty & { _dataSourceId?: string; _provider?: string }> }>({
+    queryKey: ["/api/properties/all"],
+    enabled: showNewPropertiesCheck,
   });
 
   const apiProperties = propertiesResponse?.data || [];
@@ -219,7 +220,7 @@ export default function PropertySelection() {
     (p) => !existingExternalIds.has(p.id),
   );
 
-  const combinedProperties: HospitableProperty[] = [
+  const combinedProperties: Array<HospitableProperty & { _isFromDatabase?: boolean; _dataSourceId?: string; _provider?: string }> = [
     ...(existingListings || []).map(
       (listing) =>
         ({
@@ -244,6 +245,8 @@ export default function PropertySelection() {
       (p) =>
         ({ ...p, _isFromDatabase: false }) as HospitableProperty & {
           _isFromDatabase?: boolean;
+          _dataSourceId?: string;
+          _provider?: string;
         },
     ),
   ];
@@ -760,7 +763,7 @@ export default function PropertySelection() {
   };
 
   const handleSync = () => {
-    if (!connectedSource) return;
+    if (!dataSources) return;
 
     // Get IDs of already-synced listings
     const alreadySyncedExternalIds = new Set(
@@ -772,22 +775,55 @@ export default function PropertySelection() {
     const newPropertiesToSync = properties.filter(
       (p) =>
         selectedProperties.has(p.id) && !alreadySyncedExternalIds.has(p.id),
-    );
+    ) as Array<HospitableProperty & { _dataSourceId?: string; _provider?: string }>;
 
     if (newPropertiesToSync.length === 0) {
       // All selected properties are already synced
       return;
     }
 
+    // Group properties by their data source.
+    // Properties fetched from /api/properties/all carry _dataSourceId.
+    // Properties from existing DB listings carry no _dataSourceId — fall back
+    // to the preferred connected source for backward-compat.
+    const preferredSource =
+      dataSources.find((ds) => ds.isConnected && ds.provider === "hospitable") ??
+      dataSources.find((ds) => ds.isConnected && ds.provider === "airbnb");
+
+    const byDataSource = new Map<string, typeof newPropertiesToSync>();
+    for (const p of newPropertiesToSync) {
+      const dsId = p._dataSourceId || preferredSource?.id;
+      if (!dsId) continue;
+      if (!byDataSource.has(dsId)) byDataSource.set(dsId, []);
+      byDataSource.get(dsId)!.push(p);
+    }
+
+    if (byDataSource.size === 0) return;
+
     setSyncingPropertyNames(
       newPropertiesToSync.map((p) => p.public_name || p.name || "Property"),
     );
     setSyncingExternalIds(newPropertiesToSync.map((p) => p.id));
+
+    // If all properties belong to one data source (common case), mutate once.
+    // For multiple sources, use the first batch — subsequent batches import in background.
+    const [[firstDataSourceId, firstBatch], ...remainingEntries] = [...byDataSource.entries()];
     importMutation.mutate({
-      dataSourceId: connectedSource.id,
-      properties: newPropertiesToSync,
+      dataSourceId: firstDataSourceId,
+      properties: firstBatch,
       syncDays: parseInt(syncDays),
     });
+
+    // Fire-and-forget imports for additional data sources
+    for (const [dsId, batch] of remainingEntries) {
+      apiRequest("POST", "/api/listings/import", {
+        dataSourceId: dsId,
+        properties: batch,
+        syncDays: parseInt(syncDays),
+      }).catch((err) => {
+        console.error(`Background import for data source ${dsId} failed:`, err);
+      });
+    }
   };
 
   const filteredProperties = properties.filter((property) => {
