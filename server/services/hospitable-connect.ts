@@ -303,6 +303,7 @@ export const connectHospitableService = {
     try {
       // Fetch listings from Hospitable Connect
       const listingsData = await this.getCustomerListings(customerId);
+      console.log(listingsData, "Listings data from Hospitable Connect");
       const source = await db.query.dataSources.findFirst({
         where: eq(dataSources.id, dataSourceId),
       });
@@ -313,7 +314,7 @@ export const connectHospitableService = {
         );
         return;
       }
-
+      console.log("Data source for syncing listings:", source);
       // Create/update listings in database
       for (const listing of listingsData.listings) {
         const imageUrls =

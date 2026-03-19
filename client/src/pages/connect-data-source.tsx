@@ -158,13 +158,23 @@ export default function ConnectDataSource() {
     return () => window.removeEventListener("message", handleMessage);
   }, [refetch, refetchNotion, toast, setLocation]);
 
-  const hasConnectedSource =
+  const hasConnectedHospitableSource =
     dataSources &&
     dataSources.length > 0 &&
-    dataSources.some((ds) => ds.isConnected);
-  const connectedSource = dataSources?.find((ds) => ds.isConnected);
+    dataSources.some((ds) => ds.provider === "hospitable" && ds.isConnected);
+  const connectedHospitableSource = dataSources?.find(
+    (ds) => ds.provider === "hospitable" && ds.isConnected,
+  );
 
-  const disconnectMutation = useMutation({
+  const hasConnectedAirbnbSource =
+    dataSources &&
+    dataSources.length > 0 &&
+    dataSources.some((ds) => ds.provider === "airbnb" && ds.isConnected);
+  const connectedAirbnbSource = dataSources?.find(
+    (ds) => ds.provider === "airbnb" && ds.isConnected,
+  );
+
+  const disconnectHospitableMutation = useMutation({
     mutationFn: async (dataSourceId: string) => {
       await apiRequest("DELETE", `/api/data-sources/${dataSourceId}`);
     },
@@ -178,6 +188,31 @@ export default function ConnectDataSource() {
       toast({
         title: "Disconnected",
         description: "Successfully disconnected from Hospitable.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to disconnect. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const disconnectAirbnbMutation = useMutation({
+    mutationFn: async (dataSourceId: string) => {
+      await apiRequest("DELETE", `/api/data-sources/${dataSourceId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/listings/stats"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/listings/suggestions"],
+      });
+      toast({
+        title: "Disconnected",
+        description: "Successfully disconnected from Airbnb.",
       });
     },
     onError: () => {
@@ -500,9 +535,15 @@ export default function ConnectDataSource() {
     }
   };
 
-  const handleDisconnect = () => {
-    if (connectedSource) {
-      disconnectMutation.mutate(connectedSource.id);
+  const handleDisconnectHospitable = () => {
+    if (connectedHospitableSource) {
+      disconnectHospitableMutation.mutate(connectedHospitableSource.id);
+    }
+  };
+
+  const handleDisconnectAirbnb = () => {
+    if (connectedAirbnbSource) {
+      disconnectAirbnbMutation.mutate(connectedAirbnbSource.id);
     }
   };
 
@@ -602,7 +643,7 @@ export default function ConnectDataSource() {
                   <div>
                     <div className="flex items-center gap-2">
                       <CardTitle>Hospitable</CardTitle>
-                      {hasConnectedSource && (
+                      {hasConnectedHospitableSource && (
                         <Badge
                           variant="default"
                           className="bg-emerald-500 hover:bg-emerald-600"
@@ -643,7 +684,7 @@ export default function ConnectDataSource() {
                     Retry
                   </Button>
                 </div>
-              ) : hasConnectedSource ? (
+              ) : hasConnectedHospitableSource ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                     <CheckCircle2 className="w-5 h-5 text-emerald-500" />
@@ -651,11 +692,11 @@ export default function ConnectDataSource() {
                       <p className="font-medium text-emerald-600 dark:text-emerald-400">
                         Connected to Hospitable
                       </p>
-                      {connectedSource?.lastSyncAt && (
+                      {connectedHospitableSource?.lastSyncAt && (
                         <p className="text-sm text-muted-foreground">
                           Last synced:{" "}
                           {new Date(
-                            connectedSource.lastSyncAt,
+                            connectedHospitableSource.lastSyncAt,
                           ).toLocaleString()}
                         </p>
                       )}
@@ -677,11 +718,11 @@ export default function ConnectDataSource() {
                     <Button
                       variant="ghost"
                       className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={handleDisconnect}
-                      disabled={disconnectMutation.isPending}
+                      onClick={handleDisconnectHospitable}
+                      disabled={disconnectHospitableMutation.isPending}
                       data-testid="button-disconnect"
                     >
-                      {disconnectMutation.isPending ? (
+                      {disconnectHospitableMutation.isPending ? (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       ) : (
                         <Unplug className="w-4 h-4 mr-2" />
@@ -717,7 +758,17 @@ export default function ConnectDataSource() {
                     <SiAirbnb className="w-6 h-6 text-white" />
                   </div>
                   <div>
-                    <CardTitle>Airbnb</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <CardTitle>Airbnb</CardTitle>
+                      {hasConnectedAirbnbSource && (
+                        <Badge
+                          variant="default"
+                          className="bg-emerald-500 hover:bg-emerald-600"
+                        >
+                          Connected
+                        </Badge>
+                      )}
+                    </div>
                     <CardDescription>
                       Connect Airbnb through Hospitable Connect to authorize
                       your account
@@ -727,30 +778,102 @@ export default function ConnectDataSource() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Start Airbnb authorization to link your account and continue
-                  setup in Hospitable Connect.
-                </p>
-                <Button
-                  onClick={handleConnectAirbnb}
-                  disabled={isConnectingAirbnb}
-                  data-testid="button-connect-airbnb"
-                >
-                  {isConnectingAirbnb ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <SiAirbnb className="w-4 h-4 mr-2" />
-                      Connect Airbnb
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </>
-                  )}
-                </Button>
-              </div>
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Loading connection status...</span>
+                </div>
+              ) : error ? (
+                <div className="space-y-3">
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>
+                      Failed to load data sources. Please try again.
+                    </AlertDescription>
+                  </Alert>
+                  <Button
+                    onClick={() => refetch()}
+                    variant="outline"
+                    data-testid="button-retry-airbnb"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Retry
+                  </Button>
+                </div>
+              ) : hasConnectedAirbnbSource ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                    <div className="flex-1">
+                      <p className="font-medium text-emerald-600 dark:text-emerald-400">
+                        Connected to Airbnb
+                      </p>
+                      {connectedAirbnbSource?.lastSyncAt && (
+                        <p className="text-sm text-muted-foreground">
+                          Last synced:{" "}
+                          {new Date(
+                            connectedAirbnbSource.lastSyncAt,
+                          ).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        queryClient.invalidateQueries({
+                          queryKey: ["/api/listings"],
+                        });
+                        setLocation("/properties");
+                      }}
+                      data-testid="button-go-to-properties-airbnb"
+                    >
+                      Manage Properties
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={handleDisconnectAirbnb}
+                      disabled={disconnectAirbnbMutation.isPending}
+                      data-testid="button-disconnect-airbnb"
+                    >
+                      {disconnectAirbnbMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Unplug className="w-4 h-4 mr-2" />
+                      )}
+                      Disconnect
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Start Airbnb authorization to link your account and continue
+                    setup in Hospitable Connect.
+                  </p>
+                  <Button
+                    onClick={handleConnectAirbnb}
+                    disabled={isConnectingAirbnb}
+                    data-testid="button-connect-airbnb"
+                  >
+                    {isConnectingAirbnb ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      <>
+                        <SiAirbnb className="w-4 h-4 mr-2" />
+                        Connect Airbnb
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
 
