@@ -52,11 +52,11 @@ export function useAuth() {
 
 export function useRequestMagicLink() {
   return useMutation({
-    mutationFn: async (email: string) => {
+    mutationFn: async (payload: { email: string; firstName?: string; lastName?: string }) => {
       const res = await fetch("/api/auth/magic-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify(payload),
       });
 
       if (res.status === 429) {

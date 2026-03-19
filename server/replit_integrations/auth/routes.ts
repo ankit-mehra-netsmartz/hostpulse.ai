@@ -8,6 +8,8 @@ const MAGIC_LINK_COOLDOWN_MS = 60 * 1000;
 
 const requestMagicLinkSchema = z.object({
   email: z.string().email("Invalid email address"),
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
 });
 
 // Register auth-specific routes
@@ -42,9 +44,12 @@ export function registerAuthRoutes(app: Express): void {
     }
 
     const normalizedEmail = parsed.data.email.trim().toLowerCase();
+    const { firstName, lastName } = parsed.data;
+    console.log(`[Auth] magic-link request: email=${normalizedEmail}, firstName=${firstName}, lastName=${lastName}`);
 
     try {
-      const result = await authStorage.upsertMagicUser(normalizedEmail);
+      const result = await authStorage.upsertMagicUser(normalizedEmail, firstName, lastName);
+      console.log(`[Auth] upsertMagicUser result: id=${result.user.id}, firstName=${result.user.firstName}, lastName=${result.user.lastName}, isNewUser=${result.isNewUser}`);
 
       if (result.isGoogleAccount) {
         return res.status(200).json({

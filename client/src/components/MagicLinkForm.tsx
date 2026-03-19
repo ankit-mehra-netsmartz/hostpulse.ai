@@ -9,8 +9,10 @@ import { Separator } from "@/components/ui/separator";
 
 type FormState = "idle" | "sent" | "google_account" | "rate_limited";
 
-const emailSchema = z.object({
+const magicLinkSchema = z.object({
   email: z.string().email("Enter a valid email address"),
+  firstName: z.string().min(1, "First name is required").max(100),
+  lastName: z.string().min(1, "Last name is required").max(100),
 });
 
 interface MagicLinkFormProps {
@@ -20,6 +22,8 @@ interface MagicLinkFormProps {
 export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
   const requestMagicLink = useRequestMagicLink();
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [state, setState] = useState<FormState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -34,16 +38,16 @@ export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
   }, [cooldown]);
 
   const emailError = useMemo(() => {
-    const result = emailSchema.safeParse({ email });
+    const result = magicLinkSchema.shape.email.safeParse(email);
     if (!email) return null;
     return result.success ? null : result.error.errors[0].message;
   }, [email]);
 
-  async function submitMagicLink(targetEmail: string) {
+  async function submitMagicLink(targetEmail: string, fName: string, lName: string) {
     setErrorMessage(null);
     try {
       const normalized = targetEmail.trim().toLowerCase();
-      const result = await requestMagicLink.mutateAsync(normalized);
+      const result = await requestMagicLink.mutateAsync({ email: normalized, firstName: fName, lastName: lName });
 
       if (result?.sent === false && result?.reason === "google_account") {
         setSubmittedEmail(normalized);
@@ -54,6 +58,8 @@ export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
       setSubmittedEmail(normalized);
       setState("sent");
       setCooldown(60);
+      setFirstName("");
+      setLastName("");
     } catch (err: any) {
       if (err?.status === 429 && err?.retryAfterSeconds) {
         setSubmittedEmail(targetEmail.trim().toLowerCase());
@@ -73,18 +79,18 @@ export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const parsed = emailSchema.safeParse({ email: email.trim().toLowerCase() });
+    const parsed = magicLinkSchema.safeParse({ email: email.trim().toLowerCase(), firstName: firstName.trim(), lastName: lastName.trim() });
     if (!parsed.success) {
       setErrorMessage(parsed.error.errors[0].message);
       return;
     }
 
-    submitMagicLink(parsed.data.email);
+    submitMagicLink(parsed.data.email, parsed.data.firstName, parsed.data.lastName);
   }
 
   async function handleResend() {
     if (cooldown > 0 || !submittedEmail) return;
-    await submitMagicLink(submittedEmail);
+    await submitMagicLink(submittedEmail, firstName, lastName);
   }
 
   function resetToIdle() {
@@ -93,6 +99,8 @@ export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
     setCooldown(0);
     setSubmittedEmail("");
     setEmail("");
+    setFirstName("");
+    setLastName("");
   }
 
   if (state === "sent") {
@@ -198,6 +206,32 @@ export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="magic-first-name">First name</Label>
+            <Input
+              id="magic-first-name"
+              type="text"
+              autoComplete="given-name"
+              placeholder="Jane"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="magic-last-name">Last name</Label>
+            <Input
+              id="magic-last-name"
+              type="text"
+              autoComplete="family-name"
+              placeholder="Doe"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              disabled={isLoading}
+            />
+          </div>
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor="magic-email">Email</Label>
           <Input
