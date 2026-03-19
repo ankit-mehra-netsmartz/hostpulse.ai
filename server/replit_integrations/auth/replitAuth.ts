@@ -5,6 +5,7 @@ import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 import { ACCOUNT_TYPES } from "@shared/models/auth";
+import { logger } from "../../logger";
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
@@ -48,7 +49,7 @@ export async function setupAuth(app: Express) {
         callbackURL: process.env.GOOGLE_CALLBACK_URL!,
       },
       async (_accessToken, _refreshToken, profile, done) => {
-        console.log("[Auth] Google OAuth verify callback triggered");
+        logger.info("Auth", "Google OAuth verify callback triggered");
         try {
           const email =
             profile.emails?.[0]?.value ?? `${profile.id}@google.oauth`;
@@ -62,7 +63,7 @@ export async function setupAuth(app: Express) {
             },
             ACCOUNT_TYPES.GOOGLE,
           );
-          console.log(`[Auth] User upserted: ${user.id} (${user.email})`);
+          logger.info("Auth", `User upserted: ${user.id}`);
           done(null, { id: user.id, email: user.email });
         } catch (error) {
           console.error("[Auth] Error in Google verify callback:", error);
@@ -93,7 +94,7 @@ export async function setupAuth(app: Express) {
 
   // Google OAuth callback
   app.get("/auth/google/callback", (req, res, next) => {
-    console.log("[Auth] Google OAuth callback hit");
+    logger.info("Auth", "Google OAuth callback hit");
     const returnTo = (req.session as any)?.returnTo || "/";
     if (req.session) {
       delete (req.session as any).returnTo;

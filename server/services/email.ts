@@ -1,20 +1,20 @@
 // Resend Email Service Integration for HostPulse
-import { Resend } from 'resend';
-import { config } from '../config';
-import { logger } from '../logger';
+import { Resend } from "resend";
+import { config } from "../config";
+import { logger } from "../logger";
 
-const HOSTPULSE_FROM_EMAIL = 'HostPulse <noreply@hostpulse.ai>';
+const HOSTPULSE_FROM_EMAIL = "HostPulse <noreply@hostpulse.ai>";
 
 function getResendClient() {
   const apiKey = config.resend.apiKey;
-  
+
   if (!apiKey) {
-    throw new Error('HOSTPULSE_RESEND_API_KEY not configured');
+    throw new Error("HOSTPULSE_RESEND_API_KEY not configured");
   }
-  
+
   return {
     client: new Resend(apiKey),
-    fromEmail: HOSTPULSE_FROM_EMAIL
+    fromEmail: HOSTPULSE_FROM_EMAIL,
   };
 }
 
@@ -27,21 +27,29 @@ export interface TeamInviteEmailParams {
   invitationToken: string;
 }
 
-export async function sendTeamInviteEmail(params: TeamInviteEmailParams): Promise<boolean> {
+export async function sendTeamInviteEmail(
+  params: TeamInviteEmailParams,
+): Promise<boolean> {
   try {
     const { client, fromEmail } = getResendClient();
-    
-    const { toEmail, teamName, workspaceName, inviterName, role, invitationToken } = params;
-    
-    const replitDomain = config.replit.devDomain;
-    const baseUrl = config.appUrl || (replitDomain ? `https://${replitDomain}` : 'https://hostpulse.ai');
+
+    const {
+      toEmail,
+      teamName,
+      workspaceName,
+      inviterName,
+      role,
+      invitationToken,
+    } = params;
+
+    const baseUrl = config.appUrl || "https://hostpulse.ai";
     const inviteLink = `${baseUrl}/invite/${invitationToken}`;
-    
+
     // Extract first name from inviter name
-    const inviterFirstName = inviterName.split(' ')[0];
-    
+    const inviterFirstName = inviterName.split(" ")[0];
+
     const result = await client.emails.send({
-      from: fromEmail || 'HostPulse <noreply@hostpulse.ai>',
+      from: fromEmail || "HostPulse <noreply@hostpulse.ai>",
       to: toEmail,
       subject: `${inviterFirstName} has invited you to join team ${teamName} on HostPulse`,
       html: `
@@ -68,7 +76,7 @@ export async function sendTeamInviteEmail(params: TeamInviteEmailParams): Promis
             
             <div style="background: linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%); padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f87171;">
               <p style="margin: 0; color: #6b7280;">
-                <strong>Your Role:</strong> ${role === 'manager' ? 'Team Manager' : 'Team Member'}
+                <strong>Your Role:</strong> ${role === "manager" ? "Team Manager" : "Team Member"}
               </p>
             </div>
             
@@ -108,44 +116,46 @@ export async function sendTeamInviteEmail(params: TeamInviteEmailParams): Promis
       `,
     });
 
-    logger.info('Email', 'Team invite sent successfully to', toEmail, result);
+    logger.info("Email", "Team invite sent successfully to", toEmail, result);
     return true;
   } catch (error) {
-    logger.error('Email', 'Failed to send team invite email:', error);
+    logger.error("Email", "Failed to send team invite email:", error);
     return false;
   }
 }
 
 export interface FeedbackEmailParams {
-  type: 'support' | 'feedback' | 'bug';
+  type: "support" | "feedback" | "bug";
   message: string;
   userEmail?: string;
   userName?: string;
 }
 
-export async function sendFeedbackEmail(params: FeedbackEmailParams): Promise<boolean> {
+export async function sendFeedbackEmail(
+  params: FeedbackEmailParams,
+): Promise<boolean> {
   try {
     const { client, fromEmail } = getResendClient();
-    
+
     const { type, message, userEmail, userName } = params;
-    
+
     const typeLabels: Record<string, string> = {
-      support: 'Support Request',
-      feedback: 'Product Feedback',
-      bug: 'Bug Report'
+      support: "Support Request",
+      feedback: "Product Feedback",
+      bug: "Bug Report",
     };
-    
+
     const typeEmoji: Record<string, string> = {
-      support: '🆘',
-      feedback: '💡',
-      bug: '🐛'
+      support: "🆘",
+      feedback: "💡",
+      bug: "🐛",
     };
-    
+
     const result = await client.emails.send({
-      from: fromEmail || 'HostPulse <noreply@hostpulse.ai>',
-      to: 'derek@hostpulse.ai',
+      from: fromEmail || "HostPulse <noreply@hostpulse.ai>",
+      to: "derek@hostpulse.ai",
       replyTo: userEmail || undefined,
-      subject: `[HostPulse BETA] ${typeLabels[type]} from ${userName || 'Anonymous User'}`,
+      subject: `[HostPulse BETA] ${typeLabels[type]} from ${userName || "Anonymous User"}`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -168,8 +178,8 @@ export async function sendFeedbackEmail(params: FeedbackEmailParams): Promise<bo
             
             <h3 style="margin-top: 0; color: #1f2937;">From User:</h3>
             <p style="color: #4b5563;">
-              <strong>Name:</strong> ${userName || 'Not provided'}<br>
-              <strong>Email:</strong> ${userEmail || 'Not provided'}
+              <strong>Name:</strong> ${userName || "Not provided"}<br>
+              <strong>Email:</strong> ${userEmail || "Not provided"}
             </p>
             
             <h3 style="color: #1f2937;">Message:</h3>
@@ -188,10 +198,10 @@ export async function sendFeedbackEmail(params: FeedbackEmailParams): Promise<bo
       `,
     });
 
-    logger.info('Email', 'Feedback sent successfully:', result);
+    logger.info("Email", "Feedback sent successfully:", result);
     return true;
   } catch (error) {
-    logger.error('Email', 'Failed to send feedback email:', error);
+    logger.error("Email", "Failed to send feedback email:", error);
     return false;
   }
 }
@@ -207,29 +217,35 @@ export interface ChangelogEmailParams {
   }>;
 }
 
-export async function sendChangelogEmail(params: ChangelogEmailParams): Promise<boolean> {
+export async function sendChangelogEmail(
+  params: ChangelogEmailParams,
+): Promise<boolean> {
   try {
     const { client, fromEmail } = getResendClient();
-    
+
     const { toEmail, entries } = params;
-    
+
     if (entries.length === 0) {
       return false;
     }
-    
-    const entriesHtml = entries.map(entry => `
+
+    const entriesHtml = entries
+      .map(
+        (entry) => `
       <div style="background: #ffffff; padding: 20px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #f87171;">
         <h3 style="margin: 0 0 10px 0; color: #1f2937; font-size: 18px;">${entry.title}</h3>
         <p style="margin: 0 0 10px 0; color: #4b5563;">${entry.description}</p>
-        ${entry.location ? `<span style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: #6b7280;">${entry.location}</span>` : ''}
-        ${entry.hostBenefit ? `<p style="margin: 10px 0 0 0; color: #059669; font-size: 14px; font-style: italic;">💡 ${entry.hostBenefit}</p>` : ''}
+        ${entry.location ? `<span style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: #6b7280;">${entry.location}</span>` : ""}
+        ${entry.hostBenefit ? `<p style="margin: 10px 0 0 0; color: #059669; font-size: 14px; font-style: italic;">💡 ${entry.hostBenefit}</p>` : ""}
       </div>
-    `).join('');
-    
+    `,
+      )
+      .join("");
+
     const result = await client.emails.send({
-      from: fromEmail || 'HostPulse <noreply@hostpulse.ai>',
+      from: fromEmail || "HostPulse <noreply@hostpulse.ai>",
       to: toEmail,
-      subject: `What's New in HostPulse - ${entries.length} Update${entries.length > 1 ? 's' : ''}!`,
+      subject: `What's New in HostPulse - ${entries.length} Update${entries.length > 1 ? "s" : ""}!`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -269,13 +285,13 @@ export async function sendChangelogEmail(params: ChangelogEmailParams): Promise<
           </div>
         </body>
         </html>
-      `
+      `,
     });
-    
-    logger.info('Email', 'Changelog email sent to:', toEmail, result);
+
+    logger.info("Email", "Changelog email sent to:", toEmail, result);
     return true;
   } catch (error) {
-    logger.error('Email', 'Failed to send changelog email:', error);
+    logger.error("Email", "Failed to send changelog email:", error);
     return false;
   }
 }
@@ -291,14 +307,24 @@ export interface CleaningReminderEmailParams {
   checklistUrl: string;
 }
 
-export async function sendCleaningReminderEmail(params: CleaningReminderEmailParams): Promise<boolean> {
+export async function sendCleaningReminderEmail(
+  params: CleaningReminderEmailParams,
+): Promise<boolean> {
   try {
     const { client, fromEmail } = getResendClient();
-    
-    const { toEmail, cleanerName, listingName, listingAddress, scheduledDate, guestName, checklistUrl } = params;
-    
+
+    const {
+      toEmail,
+      cleanerName,
+      listingName,
+      listingAddress,
+      scheduledDate,
+      guestName,
+      checklistUrl,
+    } = params;
+
     const result = await client.emails.send({
-      from: fromEmail || 'HostPulse <noreply@hostpulse.ai>',
+      from: fromEmail || "HostPulse <noreply@hostpulse.ai>",
       to: toEmail,
       subject: `Cleaning Reminder: ${listingName} - ${scheduledDate}`,
       html: `
@@ -327,8 +353,8 @@ export async function sendCleaningReminderEmail(params: CleaningReminderEmailPar
               <p style="margin: 0 0 8px 0; color: #1e40af; font-weight: 600; font-size: 18px;">
                 ${listingName}
               </p>
-              ${listingAddress ? `<p style="margin: 0 0 8px 0; color: #6b7280;">${listingAddress}</p>` : ''}
-              ${guestName ? `<p style="margin: 0; color: #6b7280;">Departing guest: <strong>${guestName}</strong></p>` : ''}
+              ${listingAddress ? `<p style="margin: 0 0 8px 0; color: #6b7280;">${listingAddress}</p>` : ""}
+              ${guestName ? `<p style="margin: 0; color: #6b7280;">Departing guest: <strong>${guestName}</strong></p>` : ""}
             </div>
             
             <div style="text-align: center; margin: 30px 0;">
@@ -362,11 +388,11 @@ export async function sendCleaningReminderEmail(params: CleaningReminderEmailPar
         </html>
       `,
     });
-    
-    logger.info('Email', 'Cleaning reminder sent to:', toEmail, result);
+
+    logger.info("Email", "Cleaning reminder sent to:", toEmail, result);
     return true;
   } catch (error) {
-    logger.error('Email', 'Failed to send cleaning reminder email:', error);
+    logger.error("Email", "Failed to send cleaning reminder email:", error);
     return false;
   }
 }
@@ -385,12 +411,15 @@ export interface ShortCodeData {
 export function renderTemplate(template: string, data: ShortCodeData): string {
   let result = template;
   for (const [key, value] of Object.entries(data)) {
-    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value || '');
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value || "");
   }
   return result;
 }
 
-export const DEFAULT_TEMPLATES: Record<string, { subject?: string; body: string }> = {
+export const DEFAULT_TEMPLATES: Record<
+  string,
+  { subject?: string; body: string }
+> = {
   reminder_email: {
     subject: "Cleaning Reminder: {{property_name}} - {{scheduled_date}}",
     body: "Hi {{cleaner_name}},\n\nYou have a cleaning scheduled for {{scheduled_date}} at {{property_name}}.\n\nAddress: {{address}}\nDeparting guest: {{guest_name}}\n\nView your checklist: {{checklist_link}}",
@@ -422,16 +451,21 @@ export interface TemplatedNotificationParams {
   shortCodeData: ShortCodeData;
 }
 
-export async function sendTemplatedEmail(params: TemplatedNotificationParams): Promise<boolean> {
+export async function sendTemplatedEmail(
+  params: TemplatedNotificationParams,
+): Promise<boolean> {
   if (!params.toEmail) return false;
   try {
     const { client, fromEmail } = getResendClient();
-    const renderedSubject = renderTemplate(params.subject || '', params.shortCodeData);
+    const renderedSubject = renderTemplate(
+      params.subject || "",
+      params.shortCodeData,
+    );
     const renderedBody = renderTemplate(params.body, params.shortCodeData);
-    const htmlBody = renderedBody.replace(/\n/g, '<br>');
+    const htmlBody = renderedBody.replace(/\n/g, "<br>");
 
     await client.emails.send({
-      from: fromEmail || 'HostPulse <noreply@hostpulse.ai>',
+      from: fromEmail || "HostPulse <noreply@hostpulse.ai>",
       to: params.toEmail,
       subject: renderedSubject,
       html: `
@@ -452,10 +486,10 @@ export async function sendTemplatedEmail(params: TemplatedNotificationParams): P
         </html>
       `,
     });
-    logger.info('Email', 'Templated notification sent to:', params.toEmail);
+    logger.info("Email", "Templated notification sent to:", params.toEmail);
     return true;
   } catch (error) {
-    logger.error('Email', 'Failed to send templated email:', error);
+    logger.error("Email", "Failed to send templated email:", error);
     return false;
   }
 }
@@ -465,35 +499,49 @@ interface CleanerInviteEmailParams {
   cleanerName: string;
   workspaceName: string;
   inviterName: string;
-  role: 'individual' | 'company' | 'cleaning_manager' | 'team_member';
+  role: "individual" | "company" | "cleaning_manager" | "team_member";
   companyName?: string;
   inviteToken: string;
   baseUrl?: string;
 }
 
-export async function sendCleanerInviteEmail(params: CleanerInviteEmailParams): Promise<boolean> {
+export async function sendCleanerInviteEmail(
+  params: CleanerInviteEmailParams,
+): Promise<boolean> {
   try {
     const { client, fromEmail } = getResendClient();
 
-    const { toEmail, cleanerName, workspaceName, inviterName, role, companyName, inviteToken } = params;
+    const {
+      toEmail,
+      cleanerName,
+      workspaceName,
+      inviterName,
+      role,
+      companyName,
+      inviteToken,
+    } = params;
 
-    const replitDomain = config.replit.devDomain;
-    const baseUrl = params.baseUrl || config.appUrl || (replitDomain ? `https://${replitDomain}` : 'https://hostpulse.ai');
+    const baseUrl = params.baseUrl || config.appUrl || "https://hostpulse.ai";
     const mobileLink = `${baseUrl}/cleaner-invite/${inviteToken}`;
 
-    const inviterFirstName = inviterName.split(' ')[0];
+    const inviterFirstName = inviterName.split(" ")[0];
 
-    const roleLabel = role === 'company' ? 'Cleaning Company'
-      : role === 'cleaning_manager' ? 'Cleaning Manager'
-      : role === 'team_member' ? 'Team Member'
-      : 'Cleaner';
+    const roleLabel =
+      role === "company"
+        ? "Cleaning Company"
+        : role === "cleaning_manager"
+          ? "Cleaning Manager"
+          : role === "team_member"
+            ? "Team Member"
+            : "Cleaner";
 
-    const teamMemberLine = role === 'team_member' && companyName
-      ? `<p style="color: #4b5563; font-size: 16px; margin: 0 0 15px 0;">You have been added as a team member of <strong>${companyName}</strong>.</p>`
-      : '';
+    const teamMemberLine =
+      role === "team_member" && companyName
+        ? `<p style="color: #4b5563; font-size: 16px; margin: 0 0 15px 0;">You have been added as a team member of <strong>${companyName}</strong>.</p>`
+        : "";
 
     const result = await client.emails.send({
-      from: fromEmail || 'HostPulse <noreply@hostpulse.ai>',
+      from: fromEmail || "HostPulse <noreply@hostpulse.ai>",
       to: toEmail,
       subject: `You've been invited to join ${workspaceName} on HostPulse`,
       html: `
@@ -531,10 +579,10 @@ export async function sendCleanerInviteEmail(params: CleanerInviteEmailParams): 
       `,
     });
 
-    logger.info('Email', 'Cleaner invite sent to:', toEmail, 'Result:', result);
+    logger.info("Email", "Cleaner invite sent to:", toEmail, "Result:", result);
     return true;
   } catch (error) {
-    logger.error('Email', 'Failed to send cleaner invite email:', error);
+    logger.error("Email", "Failed to send cleaner invite email:", error);
     return false;
   }
 }

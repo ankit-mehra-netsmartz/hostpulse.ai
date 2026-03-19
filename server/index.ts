@@ -1,5 +1,10 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes, scheduleReviewCheck, scheduleChangelogSend, scheduleChangelogSuggest } from "./routes";
+import {
+  registerRoutes,
+  scheduleReviewCheck,
+  scheduleChangelogSend,
+  scheduleChangelogSuggest,
+} from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
@@ -8,6 +13,8 @@ import cookie from "cookie";
 import cookieSignature from "cookie-signature";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
 import { config } from "./config";
 import { logger } from "./logger";
 import { startProactiveTokenRefresh } from "./services/hospitable";
@@ -30,67 +37,71 @@ const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
 
 // Authenticate WebSocket connections using session cookie
 wss.on("connection", async (ws: WebSocket, req) => {
-  logger.info('WebSocket', 'New connection attempt');
+  logger.info("WebSocket", "New connection attempt");
   try {
     const cookies = cookie.parse(req.headers.cookie || "");
     const sessionCookie = cookies["connect.sid"];
-    
-    logger.info('WebSocket', 'Session cookie present:', !!sessionCookie);
-    
+
+    logger.info("WebSocket", "Session cookie present:", !!sessionCookie);
+
     if (!sessionCookie) {
-      logger.info('WebSocket', 'No session cookie, closing connection');
+      logger.info("WebSocket", "No session cookie, closing connection");
       ws.close(4001, "Unauthorized: No session");
       return;
     }
-    
+
     // Properly unsign the cookie using the session secret
     // Cookie format is "s:sessionId.signature" where the encoded part is URL-encoded
     let sessionId: string | false = false;
     const sessionSecret = config.session.secret;
-    
+
     if (sessionCookie.startsWith("s:")) {
       // Decode URL-encoded parts
       const decodedCookie = decodeURIComponent(sessionCookie.slice(2));
       // Unsign using cookie-signature
       sessionId = cookieSignature.unsign(decodedCookie, sessionSecret);
     }
-    
+
     if (!sessionId) {
-      logger.info('WebSocket', 'Failed to unsign session cookie');
+      logger.info("WebSocket", "Failed to unsign session cookie");
       ws.close(4001, "Unauthorized: Invalid session signature");
       return;
     }
-    
-    logger.info('WebSocket', 'Session ID extracted:', sessionId.substring(0, 8) + "...");
-    
+
+    logger.info(
+      "WebSocket",
+      "Session ID extracted:",
+      sessionId.substring(0, 8) + "...",
+    );
+
     // Get session from store
     sessionStore.get(sessionId, (err, sessionData) => {
       if (err) {
-        logger.error('WebSocket', 'Session lookup error:', err);
+        logger.error("WebSocket", "Session lookup error:", err);
         ws.close(4001, "Unauthorized: Invalid session");
         return;
       }
       if (!sessionData) {
-        logger.info('WebSocket', 'No session data found');
+        logger.info("WebSocket", "No session data found");
         ws.close(4001, "Unauthorized: Invalid session");
         return;
       }
-      
+
       const user = (sessionData as any).passport?.user;
-      logger.info('WebSocket', 'Session user found:', !!user);
-      
+      logger.info("WebSocket", "Session user found:", !!user);
+
       if (!user?.claims?.sub) {
-        logger.info('WebSocket', 'No user claims in session');
+        logger.info("WebSocket", "No user claims in session");
         ws.close(4001, "Unauthorized: No user in session");
         return;
       }
-      
-      logger.info('WebSocket', 'Authenticated user:', user.claims.sub);
+
+      logger.info("WebSocket", "Authenticated user:", user.claims.sub);
       // Pass authenticated user ID to WebSocket handler
       setupLumiWebSocket(ws, user.claims.sub);
     });
   } catch (error) {
-    logger.error('WebSocket', 'Auth error:', error);
+    logger.error("WebSocket", "Auth error:", error);
     ws.close(4001, "Unauthorized");
   }
 });
@@ -111,6 +122,36 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+// CORS: restrict origins in production
+const allowedOrigins = config.isProduction
+  ? [config.appUrl || "https://hostpulse.ai"]
+  : undefined; // allow all in development
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  }),
+);
+
+// Rate limiting: apply to auth and expensive endpoints
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
+app.use("/api/auth/magic-link", authLimiter);
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
+app.use("/api/", apiLimiter);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -139,7 +180,27 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        // Redact sensitive fields before logging
+        const SENSITIVE_KEYS = new Set([
+          "accessToken",
+          "refreshToken",
+          "token",
+          "password",
+          "secret",
+        ]);
+        const redact = (obj: any): any => {
+          if (Array.isArray(obj)) return obj.map(redact);
+          if (obj && typeof obj === "object") {
+            const out: Record<string, any> = {};
+            for (const [k, v] of Object.entries(obj)) {
+              out[k] = SENSITIVE_KEYS.has(k) ? "[REDACTED]" : redact(v);
+            }
+            return out;
+          }
+          return obj;
+        };
+        const safeBody = JSON.stringify(redact(capturedJsonResponse));
+        logLine += ` :: ${safeBody.substring(0, 500)}`;
       }
 
       log(logLine);
@@ -156,7 +217,7 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    logger.error('Server', 'Internal Server Error:', err);
+    logger.error("Server", "Internal Server Error:", err);
 
     if (res.headersSent) {
       return next(err);
@@ -191,11 +252,11 @@ app.use((req, res, next) => {
 
       try {
         await storage.seedDefaultPrompts();
-        logger.info('Server', 'Default AI prompts seeded/verified');
+        logger.info("Server", "Default AI prompts seeded/verified");
       } catch (err) {
-        logger.error('Server', 'Failed to seed default prompts:', err);
+        logger.error("Server", "Failed to seed default prompts:", err);
       }
-      
+
       scheduleReviewCheck();
       scheduleChangelogSend();
       scheduleChangelogSuggest();

@@ -9,6 +9,7 @@ import {
 import { db } from "../../db";
 import { and, desc, eq } from "drizzle-orm";
 import crypto from "crypto";
+import { logger } from "../../logger";
 
 // Interface for auth storage operations
 // (IMPORTANT) These user operations are mandatory for Replit Auth.
@@ -50,7 +51,7 @@ class AuthStorage implements IAuthStorage {
     userData: UpsertUser,
     accountType?: AccountType,
   ): Promise<User> {
-    console.log(`[Auth] Upserting user: ${userData.id} (${userData.email})`);
+    logger.info("Auth", `Upserting user: ${userData.id}`);
     try {
       const now = new Date();
 
@@ -75,8 +76,9 @@ class AuthStorage implements IAuthStorage {
             })
             .where(eq(users.id, existingByEmail.id))
             .returning();
-          console.log(
-            `[Auth] Updated existing user by email match: ${user.id}`,
+          logger.info(
+            "Auth",
+            `Updated existing user by email match: ${user.id}`,
           );
           return user;
         }
@@ -99,10 +101,10 @@ class AuthStorage implements IAuthStorage {
           },
         })
         .returning();
-      console.log(`[Auth] Successfully upserted user: ${user.id}`);
+      logger.info("Auth", `Successfully upserted user: ${user.id}`);
       return user;
     } catch (error) {
-      console.error(`[Auth] Failed to upsert user ${userData.id}:`, error);
+      logger.error("Auth", `Failed to upsert user ${userData.id}:`, error);
       throw error;
     }
   }

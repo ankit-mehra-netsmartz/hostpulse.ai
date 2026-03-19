@@ -9,6 +9,12 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+if (!process.env.SESSION_SECRET) {
+  throw new Error(
+    "SESSION_SECRET must be set. Generate one with: node -e \"console.log(require('crypto').randomBytes(48).toString('base64'))\"",
+  );
+}
+
 export const config = {
   nodeEnv,
   isDevelopment: nodeEnv !== "production",
@@ -20,7 +26,7 @@ export const config = {
   },
 
   session: {
-    secret: process.env.SESSION_SECRET || "",
+    secret: process.env.SESSION_SECRET,
   },
 
   google: {

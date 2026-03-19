@@ -7,74 +7,80 @@ import { openai, getConfiguredAIModel } from "./ai-helpers";
 
 export function registerAirbnbScanRoutes(app: Express, storage: IStorage) {
   // Debug endpoint: test only Where You'll Sleep extraction logic.
-  app.post("/api/airbnb-scans/test/where-youll-sleep", async (req, res) => {
-    try {
-      const userId = getUserId(req);
-      const body = req.body && typeof req.body === "object" ? req.body : {};
-      const inputUrl =
-        typeof (body as any).url === "string" ? (body as any).url.trim() : "";
-      const listingId =
-        typeof (body as any).listingId === "string"
-          ? (body as any).listingId.trim()
-          : "";
+  app.post(
+    "/api/airbnb-scans/test/where-youll-sleep",
+    isAuthenticated,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req);
+        const body = req.body && typeof req.body === "object" ? req.body : {};
+        const inputUrl =
+          typeof (body as any).url === "string" ? (body as any).url.trim() : "";
+        const listingId =
+          typeof (body as any).listingId === "string"
+            ? (body as any).listingId.trim()
+            : "";
 
-      let airbnbUrl = inputUrl;
+        let airbnbUrl = inputUrl;
 
-      if (!airbnbUrl && listingId) {
-        const listing = await storage.getListing(listingId);
-        if (!listing) {
-          return res.status(404).json({ message: "Listing not found" });
+        if (!airbnbUrl && listingId) {
+          const listing = await storage.getListing(listingId);
+          if (!listing) {
+            return res.status(404).json({ message: "Listing not found" });
+          }
+
+          if (
+            listing.workspaceId &&
+            !(await validateWorkspaceMembership(userId, listing.workspaceId))
+          ) {
+            return res.status(403).json({ message: "Not authorized" });
+          }
+
+          const airbnbId = listing.platformIds?.airbnb;
+          if (!airbnbId) {
+            return res
+              .status(400)
+              .json({ message: "Listing has no Airbnb ID" });
+          }
+          airbnbUrl = `https://www.airbnb.com/rooms/${airbnbId}`;
         }
 
-        if (
-          listing.workspaceId &&
-          !(await validateWorkspaceMembership(userId, listing.workspaceId))
-        ) {
-          return res.status(403).json({ message: "Not authorized" });
+        if (!airbnbUrl) {
+          return res
+            .status(400)
+            .json({ message: "Provide either url or listingId" });
         }
 
-        const airbnbId = listing.platformIds?.airbnb;
-        if (!airbnbId) {
-          return res.status(400).json({ message: "Listing has no Airbnb ID" });
+        if (!/^https?:\/\/(www\.)?airbnb\.com\//i.test(airbnbUrl)) {
+          return res
+            .status(400)
+            .json({ message: "URL must be an Airbnb listing URL" });
         }
-        airbnbUrl = `https://www.airbnb.com/rooms/${airbnbId}`;
+
+        const { scanAirbnbWhereYoullSleep } = await import("../airbnb-scanner");
+        const result = await scanAirbnbWhereYoullSleep(airbnbUrl);
+
+        res.json({
+          success: result.success,
+          url: airbnbUrl,
+          hasWhereYoullSleep: result.hasWhereYoullSleep,
+          roomCount: result.whereYoullSleep?.rooms.length || 0,
+          whereYoullSleep: result.whereYoullSleep,
+          rawSnapshot: result.rawSnapshot,
+          errorMessage: result.errorMessage,
+        });
+      } catch (error) {
+        logger.error(
+          "AirbnbScan",
+          "Error testing Where You'll Sleep extraction:",
+          error,
+        );
+        res
+          .status(500)
+          .json({ message: "Failed to test Where You'll Sleep extraction" });
       }
-
-      if (!airbnbUrl) {
-        return res
-          .status(400)
-          .json({ message: "Provide either url or listingId" });
-      }
-
-      if (!/^https?:\/\/(www\.)?airbnb\.com\//i.test(airbnbUrl)) {
-        return res
-          .status(400)
-          .json({ message: "URL must be an Airbnb listing URL" });
-      }
-
-      const { scanAirbnbWhereYoullSleep } = await import("../airbnb-scanner");
-      const result = await scanAirbnbWhereYoullSleep(airbnbUrl);
-
-      res.json({
-        success: result.success,
-        url: airbnbUrl,
-        hasWhereYoullSleep: result.hasWhereYoullSleep,
-        roomCount: result.whereYoullSleep?.rooms.length || 0,
-        whereYoullSleep: result.whereYoullSleep,
-        rawSnapshot: result.rawSnapshot,
-        errorMessage: result.errorMessage,
-      });
-    } catch (error) {
-      logger.error(
-        "AirbnbScan",
-        "Error testing Where You'll Sleep extraction:",
-        error,
-      );
-      res
-        .status(500)
-        .json({ message: "Failed to test Where You'll Sleep extraction" });
-    }
-  });
+    },
+  );
 
   // Get the latest Airbnb scan for a listing
   app.get(
