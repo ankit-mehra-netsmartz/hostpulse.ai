@@ -816,16 +816,45 @@ export function registerDataSourceRoutes(
           return res.status(404).json({ message: "Data source not found" });
         }
 
-        const { data, error } = await fetchHospitableProperties(dataSourceId);
+        let properties: any[] = [];
 
-        if (error || !data) {
-          return res.status(500).json({
-            message: error || "Failed to fetch properties from Hospitable",
-          });
+        if (dataSource.provider === "airbnb") {
+          if (!dataSource.externalCustomerId) {
+            return res.status(400).json({
+              message:
+                "Missing external customer ID for Airbnb Connect data source",
+            });
+          }
+
+          const connectListings = await hospitable_connect.getCustomerListings(
+            dataSource.externalCustomerId,
+          );
+
+          properties = connectListings.map((listing: any) => ({
+            id: listing.id,
+            name: listing.name,
+            public_name: listing.name,
+            picture:
+              Array.isArray(listing.images) && listing.images.length > 0
+                ? typeof listing.images[0] === "string"
+                  ? listing.images[0]
+                  : listing.images[0]?.url
+                : undefined,
+            listings: [{ platform: "airbnb", platform_id: listing.id }],
+          }));
+        } else {
+          const { data, error } = await fetchHospitableProperties(dataSourceId);
+
+          if (error || !data) {
+            return res.status(500).json({
+              message: error || "Failed to fetch properties from Hospitable",
+            });
+          }
+
+          // Hospitable API response wraps properties in a `data` array
+          properties = (data as any)?.data || [];
         }
 
-        // Hospitable API response wraps properties in a `data` array
-        const properties: any[] = (data as any)?.data || [];
         const existingListings =
           await storage.getListingsByDataSource(dataSourceId);
 
@@ -891,6 +920,36 @@ export function registerDataSourceRoutes(
 
         if (!dataSource || dataSource.userId !== userId) {
           return res.status(404).json({ message: "Data source not found" });
+        }
+
+        if (dataSource.provider === "airbnb") {
+          if (!dataSource.externalCustomerId) {
+            return res.status(400).json({
+              message:
+                "Missing external customer ID for Airbnb Connect data source",
+            });
+          }
+
+          const connectListings = await hospitable_connect.getCustomerListings(
+            dataSource.externalCustomerId,
+          );
+
+          const mappedResponse = {
+            data: connectListings.map((listing: any) => ({
+              id: listing.id,
+              name: listing.name,
+              public_name: listing.name,
+              picture:
+                Array.isArray(listing.images) && listing.images.length > 0
+                  ? typeof listing.images[0] === "string"
+                    ? listing.images[0]
+                    : listing.images[0]?.url
+                  : undefined,
+              listings: [{ platform: "airbnb", platform_id: listing.id }],
+            })),
+          };
+
+          return res.json(mappedResponse);
         }
 
         const { data, error, statusCode } =

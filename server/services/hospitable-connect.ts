@@ -56,14 +56,20 @@ interface HospitableConnectWebhookPayload {
   };
 }
 
+interface ConnectListing {
+  id: string;
+  name: string;
+  images?: Array<
+    | {
+        url?: string;
+      }
+    | string
+  >;
+}
+
 interface ChannelListingsResponse {
-  listings: Array<{
-    id: string;
-    name: string;
-    images?: Array<{
-      url: string;
-    }>;
-  }>;
+  data?: ConnectListing[];
+  listings?: ConnectListing[];
 }
 
 export const connectHospitableService = {
@@ -193,7 +199,7 @@ export const connectHospitableService = {
    */
   async getCustomerListings(
     customerId: string,
-  ): Promise<ChannelListingsResponse> {
+  ): Promise<ConnectListing[]> {
     if (!config.hospitable.connectToken) {
       throw new Error("HOSPITABLE_CONNECT_TOKEN not configured");
     }
@@ -211,14 +217,25 @@ export const connectHospitableService = {
 
       if (!response.ok) {
         logger.error(`Failed to fetch listings for customer ${customerId}`);
-        return { listings: [] };
+        return [];
       }
 
-      const data = await response.json();
-      return data;
+      const data = (await response.json()) as ChannelListingsResponse;
+
+      // Hospitable Connect payload currently returns listings in `data`.
+      if (Array.isArray(data.data)) {
+        return data.data;
+      }
+
+      // Backward-compatible fallback if payload changes back to `listings`.
+      if (Array.isArray(data.listings)) {
+        return data.listings;
+      }
+
+      return [];
     } catch (error) {
       logger.error("Error fetching Hospitable Connect listings:", error);
-      return { listings: [] };
+      return [];
     }
   },
 
@@ -303,7 +320,10 @@ export const connectHospitableService = {
     try {
       // Fetch listings from Hospitable Connect
       const listingsData = await this.getCustomerListings(customerId);
-      console.log(listingsData, "Listings data from Hospitable Connect");
+      console.log(
+        { count: listingsData.length },
+        "Listings fetched from Hospitable Connect",
+      );
       const source = await db.query.dataSources.findFirst({
         where: eq(dataSources.id, dataSourceId),
       });
@@ -316,9 +336,11 @@ export const connectHospitableService = {
       }
       console.log("Data source for syncing listings:", source);
       // Create/update listings in database
-      for (const listing of listingsData.listings) {
+      for (const listing of listingsData) {
         const imageUrls =
-          listing.images?.map((img) => img.url).filter(Boolean) || [];
+          listing.images
+            ?.map((img) => (typeof img === "string" ? img : img?.url))
+            .filter((url): url is string => Boolean(url)) || [];
 
         await db
           .insert(listings)
@@ -351,7 +373,7 @@ export const connectHospitableService = {
         .where(eq(dataSources.id, dataSourceId));
 
       logger.info(
-        `Synced ${listingsData.listings.length} listings for data source ${dataSourceId}`,
+        `Synced ${listingsData.length} listings for data source ${dataSourceId}`,
       );
     } catch (error) {
       logger.error(
