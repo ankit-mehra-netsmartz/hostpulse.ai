@@ -124,13 +124,23 @@ export default function ConnectDataSource() {
       .activate(pendingUserId)
       .then(async (res) => {
         if (res.ok) {
-          await refetch();
-          queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] });
+          // Invalidate all relevant queries so properties appear immediately.
+          await Promise.all([
+            refetch(),
+            queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] }),
+            queryClient.invalidateQueries({ queryKey: ["/api/properties/all"] }),
+            queryClient.invalidateQueries({ queryKey: ["/api/listings"] }),
+          ]);
           toast({
             title: "Airbnb Connected!",
             description:
-              "Your Airbnb account is now connected and your properties are being synced.",
+              "Your Airbnb account is now connected. Navigating to properties…",
           });
+          // Give the backend a moment to complete the background sync,
+          // then navigate to the properties page.
+          setTimeout(() => {
+            setLocation("/properties");
+          }, 1500);
         }
       })
       .catch(() => {

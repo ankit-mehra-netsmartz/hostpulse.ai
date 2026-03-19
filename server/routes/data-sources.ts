@@ -840,7 +840,7 @@ export function registerDataSourceRoutes(
             .json({ message: "Airbnb data source not found" });
         }
 
-        // Mark as connected regardless of whether the webhook fired.
+        // Mark as connected immediately so the frontend can proceed.
         await storage.updateDataSource(airbnbSource.id, {
           isConnected: true,
         });
@@ -849,20 +849,24 @@ export function registerDataSourceRoutes(
           `Activated Airbnb data source ${airbnbSource.id} for user ${userId}`,
         );
 
-        // Best-effort listing sync — failures are non-fatal.
-        try {
-          await hospitable_connect.syncConnectListings(
-            airbnbSource.id,
-            customerId,
-          );
-        } catch (syncErr) {
-          logger.warn(
-            "Connect",
-            `Activate: listings sync failed (non-fatal): ${syncErr}`,
-          );
-        }
-
+        // Respond immediately so the frontend isn't blocked waiting for Hospitable.
         res.json({ success: true, dataSourceId: airbnbSource.id });
+
+        // Kick off listing sync in background — non-fatal.
+        hospitable_connect
+          .syncConnectListings(airbnbSource.id, customerId)
+          .then(() => {
+            logger.info(
+              "Connect",
+              `Background sync complete for data source ${airbnbSource.id}`,
+            );
+          })
+          .catch((syncErr) => {
+            logger.warn(
+              "Connect",
+              `Activate: background listings sync failed: ${syncErr}`,
+            );
+          });
       } catch (error) {
         logger.error(
           "Connect",
