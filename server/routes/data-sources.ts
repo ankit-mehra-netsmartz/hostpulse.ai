@@ -937,15 +937,10 @@ export function registerDataSourceRoutes(
           const mappedResponse = {
             data: connectListings.map((listing: any) => ({
               id: listing.id,
-              name: listing.name,
-              public_name: listing.name,
-              picture:
-                Array.isArray(listing.images) && listing.images.length > 0
-                  ? typeof listing.images[0] === "string"
-                    ? listing.images[0]
-                    : listing.images[0]?.url
-                  : undefined,
-              listings: [{ platform: "airbnb", platform_id: listing.id }],
+              name: listing.public_name || listing.private_name || "Unnamed Listing",
+              public_name: listing.public_name || listing.private_name || "Unnamed Listing",
+              picture: listing.picture,
+              listings: [{ platform: listing.platform || "airbnb", platform_id: listing.platform_id }],
             })),
           };
 

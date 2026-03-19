@@ -56,20 +56,72 @@ interface HospitableConnectWebhookPayload {
   };
 }
 
+interface ConnectListingAddress {
+  street?: string;
+  apt?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+  country_code?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+interface ConnectListingCapacity {
+  max?: number;
+  bedrooms?: number;
+  beds?: number;
+  bathrooms?: number;
+}
+
+interface ConnectListingDetails {
+  space_overview?: string;
+  guest_access?: string;
+  interaction?: string;
+  notes?: string;
+  additional_rules?: string;
+  neighborhood_description?: string;
+  getting_around?: string;
+  wifi_name?: string;
+  wifi_password?: string;
+}
+
+interface ConnectListingHouseRules {
+  pets_allowed?: boolean | null;
+  smoking_allowed?: boolean | null;
+  events_allowed?: boolean | null;
+}
+
 interface ConnectListing {
   id: string;
-  name: string;
-  images?: Array<
-    | {
-        url?: string;
-      }
-    | string
-  >;
+  platform: string;
+  platform_id: string;
+  public_name: string;
+  private_name?: string | null;
+  summary?: string;
+  description?: string;
+  room_type?: string;
+  property_type?: string;
+  picture?: string;
+  address?: ConnectListingAddress;
+  capacity?: ConnectListingCapacity;
+  bedrooms?: number;
+  bathrooms?: number;
+  amenities?: string[];
+  pricing?: unknown[];
+  availability?: unknown[];
+  details?: ConnectListingDetails;
+  house_rules?: ConnectListingHouseRules;
+  check_in?: string;
+  check_out?: string | null;
+  fees?: unknown[];
 }
 
 interface ChannelListingsResponse {
   data?: ConnectListing[];
   listings?: ConnectListing[];
+  links?: Record<string, string>;
+  meta?: Record<string, unknown>;
 }
 
 export const connectHospitableService = {
@@ -215,12 +267,28 @@ export const connectHospitableService = {
         },
       );
 
+      const responseText = await response.text();
+      console.log(
+        { responseText },
+        `Raw listings response for customer ${customerId}`,
+      );
+
       if (!response.ok) {
-        logger.error(`Failed to fetch listings for customer ${customerId}`);
+        logger.error(
+          `Failed to fetch listings for customer ${customerId} (${response.status}): ${responseText}`,
+        );
         return [];
       }
 
-      const data = (await response.json()) as ChannelListingsResponse;
+      let data: ChannelListingsResponse;
+      try {
+        data = JSON.parse(responseText) as ChannelListingsResponse;
+      } catch {
+        logger.error(
+          `Invalid JSON response for customer ${customerId}: ${responseText}`,
+        );
+        return [];
+      }
 
       // Hospitable Connect payload currently returns listings in `data`.
       if (Array.isArray(data.data)) {
@@ -337,31 +405,92 @@ export const connectHospitableService = {
       console.log("Data source for syncing listings:", source);
       // Create/update listings in database
       for (const listing of listingsData) {
-        const imageUrls =
-          listing.images
-            ?.map((img) => (typeof img === "string" ? img : img?.url))
-            .filter((url): url is string => Boolean(url)) || [];
+        // Extract and format images (picture URL + any image array)
+        const imageUrls: string[] = [];
+        if (listing.picture) {
+          imageUrls.push(listing.picture);
+        }
 
-        await db
-          .insert(listings)
-          .values({
+        // Prepare address as JSON string
+        const addressStr = listing.address
+          ? [
+              listing.address.apt || "",
+              listing.address.street || "",
+              listing.address.city || "",
+              listing.address.state || "",
+              listing.address.zipcode || "",
+              listing.address.country_code || "",
+            ]
+              .filter(Boolean)
+              .join(", ")
+          : undefined;
+
+        // Some environments don't have a unique constraint on
+        // (data_source_id, external_id), so avoid ON CONFLICT and upsert manually.
+        const existingListing = await db.query.listings.findFirst({
+          where: and(
+            eq(listings.dataSourceId, dataSourceId),
+            eq(listings.externalId, listing.id),
+          ),
+        });
+
+        const normalizedHouseRules:
+          | {
+              pets_allowed?: boolean;
+              smoking_allowed?: boolean;
+              events_allowed?: boolean;
+              children_allowed?: boolean;
+            }
+          | undefined = listing.house_rules
+          ? {
+              pets_allowed:
+                listing.house_rules.pets_allowed === null
+                  ? undefined
+                  : listing.house_rules.pets_allowed,
+              smoking_allowed:
+                listing.house_rules.smoking_allowed === null
+                  ? undefined
+                  : listing.house_rules.smoking_allowed,
+              events_allowed:
+                listing.house_rules.events_allowed === null
+                  ? undefined
+                  : listing.house_rules.events_allowed,
+            }
+          : undefined;
+
+        const listingData = {
+          name: listing.public_name || listing.private_name || "Unnamed Listing",
+          description: listing.description,
+          summary: listing.summary,
+          images: imageUrls,
+          imageUrl: listing.picture || undefined,
+          bedrooms: listing.bedrooms || listing.capacity?.bedrooms,
+          bathrooms: listing.bathrooms || listing.capacity?.bathrooms,
+          address: addressStr,
+          propertyType: listing.property_type,
+          amenities: listing.amenities || [],
+          houseRules: normalizedHouseRules,
+          platformIds: {
+            airbnb: listing.platform_id,
+          },
+          updatedAt: new Date(),
+        };
+
+        if (existingListing) {
+          await db
+            .update(listings)
+            .set(listingData)
+            .where(eq(listings.id, existingListing.id));
+        } else {
+          await db.insert(listings).values({
             dataSourceId,
             externalId: listing.id,
-            name: listing.name,
-            images: imageUrls,
-            platformIds: { airbnb: listing.id },
             userId: source.userId,
             workspaceId: source.workspaceId || null,
             isActive: true,
-          })
-          .onConflictDoUpdate({
-            target: [listings.dataSourceId, listings.externalId],
-            set: {
-              name: listing.name,
-              images: imageUrls,
-              updatedAt: new Date(),
-            },
+            ...listingData,
           });
+        }
       }
 
       // Update last sync time
