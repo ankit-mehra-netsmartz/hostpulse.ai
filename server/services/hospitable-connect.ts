@@ -216,8 +216,19 @@ export const connectHospitableService = {
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        logger.error("Failed to create Hospitable Connect customer:", error);
+        const errorText = await response.text();
+        // 409 or 422 with "id has already been taken" means the customer
+        // already exists — treat as success and reuse the userId we submitted.
+        if (
+          response.status === 409 ||
+          (response.status === 422 && errorText.includes("already been taken"))
+        ) {
+          logger.info(
+            `Hospitable Connect customer already exists for userId ${userId}, reusing.`,
+          );
+          return userId;
+        }
+        logger.error("Failed to create Hospitable Connect customer:", errorText);
         throw new Error(
           `Hospitable Connect customer creation failed: ${response.statusText}`,
         );
@@ -390,7 +401,7 @@ export const connectHospitableService = {
       );
 
       // Sync listings for this data source
-      await this.syncConnectListings(dataSource.id, data.customer.id);
+      // await this.syncConnectListings(dataSource.id, data.customer.id);
     } catch (error) {
       logger.error("Error handling Hospitable Connect webhook:", error);
       throw error;

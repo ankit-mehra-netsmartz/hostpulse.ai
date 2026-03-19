@@ -31,4 +31,10 @@ export const connectHospitableService = {
       returnUrl: redirectUrl,
     });
   },
+
+  async activate(customerId: string): Promise<Response> {
+    return apiRequest("POST", "/api/hospitable-connect/activate", {
+      customerId,
+    });
+  },
 };

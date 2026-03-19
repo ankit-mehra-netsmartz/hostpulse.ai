@@ -817,6 +817,65 @@ export function registerDataSourceRoutes(
     },
   );
 
+  // Called by the frontend after the user completes the Airbnb OAuth flow to
+  // mark the data source as connected and trigger an initial listing sync.
+  app.post(
+    "/api/hospitable-connect/activate",
+    isAuthenticated,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req);
+        const customerId = req.body.customerId || userId;
+
+        const allSources = await storage.getDataSourcesByUser(userId);
+        const airbnbSource = allSources.find(
+          (ds) =>
+            ds.provider === "airbnb" &&
+            ds.externalCustomerId === customerId,
+        );
+
+        if (!airbnbSource) {
+          return res
+            .status(404)
+            .json({ message: "Airbnb data source not found" });
+        }
+
+        // Mark as connected regardless of whether the webhook fired.
+        await storage.updateDataSource(airbnbSource.id, {
+          isConnected: true,
+        });
+        logger.info(
+          "Connect",
+          `Activated Airbnb data source ${airbnbSource.id} for user ${userId}`,
+        );
+
+        // Best-effort listing sync — failures are non-fatal.
+        try {
+          await hospitable_connect.syncConnectListings(
+            airbnbSource.id,
+            customerId,
+          );
+        } catch (syncErr) {
+          logger.warn(
+            "Connect",
+            `Activate: listings sync failed (non-fatal): ${syncErr}`,
+          );
+        }
+
+        res.json({ success: true, dataSourceId: airbnbSource.id });
+      } catch (error) {
+        logger.error(
+          "Connect",
+          "Error activating Airbnb data source:",
+          error,
+        );
+        res
+          .status(500)
+          .json({ message: "Failed to activate Airbnb connection" });
+      }
+    },
+  );
+
   // Refresh owner/account metadata for all existing listings under a data source
   app.post(
     "/api/data-sources/:id/refresh-owner-metadata",

@@ -113,6 +113,33 @@ export default function ConnectDataSource() {
   });
 
   // Listen for OAuth success/error messages from popup
+  // After the user returns from the Airbnb OAuth redirect, auto-activate the
+  // data source (marks it connected + syncs listings) without relying on a webhook.
+  useEffect(() => {
+    const pendingUserId = localStorage.getItem("airbnb_oauth_pending_user");
+    if (!pendingUserId) return;
+    localStorage.removeItem("airbnb_oauth_pending_user");
+
+    connectHospitableService
+      .activate(pendingUserId)
+      .then(async (res) => {
+        if (res.ok) {
+          await refetch();
+          queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] });
+          toast({
+            title: "Airbnb Connected!",
+            description:
+              "Your Airbnb account is now connected and your properties are being synced.",
+          });
+        }
+      })
+      .catch(() => {
+        // Non-fatal — the webhook may still fire
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Listen for OAuth success/error messages from popup
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === "oauth_success") {
@@ -513,11 +540,13 @@ export default function ConnectDataSource() {
         throw new Error("Failed to get auth code");
       }
 
-      // Step 3: Redirect to Hospitable Connect authorization
+      // Step 3: Redirect to Hospitable Connect authorization.
+      // Set a flag so the page can auto-activate when the user returns.
       const authCodeData = await authCodeRes.json();
       const returnUrl = authCodeData?.data?.return_url;
 
       if (returnUrl) {
+        localStorage.setItem("airbnb_oauth_pending_user", user.id);
         window.location.href = returnUrl;
       } else {
         throw new Error("No return_url received from server");
