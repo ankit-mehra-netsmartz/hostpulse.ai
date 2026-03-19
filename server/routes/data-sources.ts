@@ -774,7 +774,8 @@ export function registerDataSourceRoutes(
         );
 
         // Idempotent: only create a data source if one doesn't already exist
-        // for this user + customerId combination
+        // for this user + customerId combination.
+        // isConnected stays false until the channel.activated webhook fires.
         const existingAirbnbSources = await storage.getDataSourcesByUser(userId);
         const existingAirbnb = existingAirbnbSources.find(
           (ds) => ds.provider === "airbnb" && ds.externalCustomerId === customerId,
@@ -849,24 +850,10 @@ export function registerDataSourceRoutes(
           `Activated Airbnb data source ${airbnbSource.id} for user ${userId}`,
         );
 
-        // Respond immediately so the frontend isn't blocked waiting for Hospitable.
+        // Properties are NOT auto-imported here — the user selects and imports
+        // them manually from the Properties page, same as the Hospitable Public
+        // API flow (toggle to import).
         res.json({ success: true, dataSourceId: airbnbSource.id });
-
-        // Kick off listing sync in background — non-fatal.
-        hospitable_connect
-          .syncConnectListings(airbnbSource.id, customerId)
-          .then(() => {
-            logger.info(
-              "Connect",
-              `Background sync complete for data source ${airbnbSource.id}`,
-            );
-          })
-          .catch((syncErr) => {
-            logger.warn(
-              "Connect",
-              `Activate: background listings sync failed: ${syncErr}`,
-            );
-          });
       } catch (error) {
         logger.error(
           "Connect",

@@ -388,20 +388,19 @@ export const connectHospitableService = {
       const dataSource = dataSourcesToUpdate[0];
 
       // Update data source to mark as connected
-      const updatedDataSource = await db
+      await db
         .update(dataSources)
         .set({
           isConnected: true,
           updatedAt: new Date(),
         })
         .where(eq(dataSources.externalCustomerId, data.customer.id));
-      console.log("Updated data source:", updatedDataSource);
       logger.info(
         `Marked Airbnb data source ${dataSource.id} as connected via Hospitable Connect`,
       );
-
-      // Sync listings for this data source
-      // await this.syncConnectListings(dataSource.id, data.customer.id);
+      // Properties are NOT auto-imported here. The user selects and imports
+      // them manually from the Properties page, exactly like the Hospitable
+      // Public API flow (toggle to import).
     } catch (error) {
       logger.error("Error handling Hospitable Connect webhook:", error);
       throw error;
