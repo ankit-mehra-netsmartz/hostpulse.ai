@@ -92,6 +92,18 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
+  // Check if an email is already registered (used by the signup form to show/hide name fields)
+  app.get("/api/auth/check-email", async (req, res) => {
+    const email = ((req.query.email as string) || "").trim().toLowerCase();
+    if (!email) return res.json({ exists: false });
+    try {
+      const user = await authStorage.findUserByEmail(email);
+      return res.json({ exists: !!user });
+    } catch {
+      return res.json({ exists: false });
+    }
+  });
+
   // Magic link click handler
   app.get("/api/auth/magic", async (req, res) => {
     const token = req.query.token as string | undefined;
