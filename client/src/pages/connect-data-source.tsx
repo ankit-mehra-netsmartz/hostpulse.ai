@@ -83,6 +83,8 @@ export default function ConnectDataSource() {
   const { toast } = useToast();
   const [isConnecting, setIsConnecting] = useState(false);
   const [isConnectingAirbnb, setIsConnectingAirbnb] = useState(false);
+  const [isWaitingForAirbnbConnection, setIsWaitingForAirbnbConnection] =
+    useState(false);
   const [isConnectingNotion, setIsConnectingNotion] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(true);
   const [localPropertyFilter, setLocalPropertyFilter] = useState<string[]>([]);
@@ -117,15 +119,19 @@ export default function ConnectDataSource() {
   // isConnected is set exclusively by the "channel.activated" webhook from
   // Hospitable — not by this client call.
   useEffect(() => {
+    // Check if there's a pending Airbnb connection being resumed
+    const pendingAirbnbDataSourceId = localStorage.getItem("airbnb_pending_data_source_id");
     const pendingUserId = localStorage.getItem("airbnb_oauth_pending_user");
-    if (!pendingUserId) return;
-    localStorage.removeItem("airbnb_oauth_pending_user");
-
+    
+    if (!pendingUserId && !pendingAirbnbDataSourceId) return;
+    
     let pollInterval: ReturnType<typeof setInterval> | null = null;
     let pollCount = 0;
     const MAX_POLLS = 60; // 60 × 3 s = 3 minutes max
 
     const startPolling = (dataSourceId: string) => {
+      setIsWaitingForAirbnbConnection(true);
+      localStorage.setItem("airbnb_pending_data_source_id", dataSourceId);
       toast({
         title: "Waiting for Airbnb confirmation…",
         description:
@@ -143,6 +149,8 @@ export default function ConnectDataSource() {
           );
           if (source?.isConnected) {
             clearInterval(pollInterval!);
+            setIsWaitingForAirbnbConnection(false);
+            localStorage.removeItem("airbnb_pending_data_source_id");
             await Promise.all([
               refetch(),
               queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] }),
@@ -157,6 +165,8 @@ export default function ConnectDataSource() {
             setTimeout(() => setLocation("/properties"), 1500);
           } else if (pollCount >= MAX_POLLS) {
             clearInterval(pollInterval!);
+            setIsWaitingForAirbnbConnection(false);
+            localStorage.removeItem("airbnb_pending_data_source_id");
             toast({
               title: "Connection Pending",
               description:
@@ -170,38 +180,60 @@ export default function ConnectDataSource() {
       }, 3000);
     };
 
-    connectHospitableService
-      .activate(pendingUserId)
-      .then(async (res) => {
-        if (!res.ok) return;
-        const body = await res.json();
-        if (body.isConnected) {
-          // Webhook already fired before we returned — proceed immediately.
-          await Promise.all([
-            refetch(),
-            queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] }),
-            queryClient.invalidateQueries({ queryKey: ["/api/properties/all"] }),
-            queryClient.invalidateQueries({ queryKey: ["/api/listings"] }),
-          ]);
-          toast({
-            title: "Airbnb Connected!",
-            description:
-              "Your Airbnb account is now connected. Navigating to properties…",
-          });
-          setTimeout(() => setLocation("/properties"), 1500);
-        } else {
-          // Webhook hasn't fired yet — start polling.
-          startPolling(body.dataSourceId);
-        }
-      })
-      .catch(() => {
-        // Non-fatal — ignore
-      });
+    // If resuming from tab switch, start polling with existing dataSourceId
+    if (pendingAirbnbDataSourceId && !pendingUserId) {
+      setIsWaitingForAirbnbConnection(true);
+      startPolling(pendingAirbnbDataSourceId);
+      return;
+    }
+
+    // Initial OAuth return flow
+    if (pendingUserId) {
+      localStorage.removeItem("airbnb_oauth_pending_user");
+      
+      connectHospitableService
+        .activate(pendingUserId)
+        .then(async (res) => {
+          if (!res.ok) return;
+          const body = await res.json();
+          if (body.isConnected) {
+            // Webhook already fired before we returned — proceed immediately.
+            setIsWaitingForAirbnbConnection(false);
+            localStorage.removeItem("airbnb_pending_data_source_id");
+            await Promise.all([
+              refetch(),
+              queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] }),
+              queryClient.invalidateQueries({ queryKey: ["/api/properties/all"] }),
+              queryClient.invalidateQueries({ queryKey: ["/api/listings"] }),
+            ]);
+            toast({
+              title: "Airbnb Connected!",
+              description:
+                "Your Airbnb account is now connected. Navigating to properties…",
+            });
+            setTimeout(() => setLocation("/properties"), 1500);
+          } else {
+            // Webhook hasn't fired yet — start polling.
+            startPolling(body.dataSourceId);
+          }
+        })
+        .catch(() => {
+          // Non-fatal — ignore
+        });
+    }
 
     return () => {
       if (pollInterval) clearInterval(pollInterval);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Initialize waiting state from localStorage on mount
+  useEffect(() => {
+    const pendingDataSourceId = localStorage.getItem("airbnb_pending_data_source_id");
+    if (pendingDataSourceId) {
+      setIsWaitingForAirbnbConnection(true);
+    }
   }, []);
 
   // Listen for OAuth success/error messages from popup
@@ -950,10 +982,10 @@ export default function ConnectDataSource() {
                   </p>
                   <Button
                     onClick={handleConnectAirbnb}
-                    disabled={isConnectingAirbnb}
+                    disabled={isConnectingAirbnb || isWaitingForAirbnbConnection}
                     data-testid="button-connect-airbnb"
                   >
-                    {isConnectingAirbnb ? (
+                    {isConnectingAirbnb || isWaitingForAirbnbConnection ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Connecting...
