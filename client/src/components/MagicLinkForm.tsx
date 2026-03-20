@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { z } from "zod";
 import { Loader2, Mail } from "lucide-react";
 import { useRequestMagicLink } from "@/hooks/use-auth";
@@ -9,8 +9,11 @@ import { Separator } from "@/components/ui/separator";
 
 type FormState = "idle" | "sent" | "google_account" | "rate_limited";
 
-const emailSchema = z.object({
-  email: z.string().email("Enter a valid email address"),
+const emailValidator = z.string().email("Enter a valid email address");
+
+const nameSchema = z.object({
+  firstName: z.string().min(1, "First name is required").max(100),
+  lastName: z.string().min(1, "Last name is required").max(100),
 });
 
 interface MagicLinkFormProps {
@@ -20,12 +23,23 @@ interface MagicLinkFormProps {
 export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
   const requestMagicLink = useRequestMagicLink();
   const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [state, setState] = useState<FormState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  // null = not checked yet, true = existing user (hide name fields), false = new user (show name fields)
+  const [isExistingUser, setIsExistingUser] = useState<boolean | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isLoading = requestMagicLink.isPending;
+  // Only show name fields when we've confirmed the email is new (not yet checked = hidden)
+  const showNameFields = isExistingUser === false;
+
+  useEffect(() => {
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, []);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -34,16 +48,39 @@ export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
   }, [cooldown]);
 
   const emailError = useMemo(() => {
-    const result = emailSchema.safeParse({ email });
+    const result = emailValidator.safeParse(email);
     if (!email) return null;
     return result.success ? null : result.error.errors[0].message;
   }, [email]);
 
-  async function submitMagicLink(targetEmail: string) {
+  function handleEmailChange(value: string) {
+    setEmail(value);
+    setIsExistingUser(null);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed || !emailValidator.safeParse(trimmed).success) return;
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/auth/check-email?email=${encodeURIComponent(trimmed)}`);
+        if (!res.ok) { setIsExistingUser(false); return; }
+        const data = await res.json();
+        setIsExistingUser(Boolean(data.exists));
+      } catch {
+        // network error — show name fields as a safe fallback
+        setIsExistingUser(false);
+      }
+    }, 400);
+  }
+
+  async function submitMagicLink(targetEmail: string, fName?: string, lName?: string) {
     setErrorMessage(null);
     try {
       const normalized = targetEmail.trim().toLowerCase();
-      const result = await requestMagicLink.mutateAsync(normalized);
+      const result = await requestMagicLink.mutateAsync({
+        email: normalized,
+        firstName: fName || undefined,
+        lastName: lName || undefined,
+      });
 
       if (result?.sent === false && result?.reason === "google_account") {
         setSubmittedEmail(normalized);
@@ -54,32 +91,39 @@ export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
       setSubmittedEmail(normalized);
       setState("sent");
       setCooldown(60);
+      setFirstName("");
+      setLastName("");
     } catch (err: any) {
       if (err?.status === 429 && err?.retryAfterSeconds) {
         setSubmittedEmail(targetEmail.trim().toLowerCase());
-        setErrorMessage(
-          err.message ?? "Please wait before requesting another link",
-        );
+        setErrorMessage(err.message ?? "Please wait before requesting another link");
         setCooldown(err.retryAfterSeconds);
         setState("rate_limited");
         return;
       }
-
-      setErrorMessage(
-        err?.message ?? "Something went wrong. Please try again.",
-      );
+      setErrorMessage(err?.message ?? "Something went wrong. Please try again.");
     }
   }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const parsed = emailSchema.safeParse({ email: email.trim().toLowerCase() });
-    if (!parsed.success) {
-      setErrorMessage(parsed.error.errors[0].message);
+    const emailResult = emailValidator.safeParse(email.trim().toLowerCase());
+    if (!emailResult.success) {
+      setErrorMessage(emailResult.error.errors[0].message);
       return;
     }
-
-    submitMagicLink(parsed.data.email);
+    if (isExistingUser === false) {
+      // New user — require names
+      const nameResult = nameSchema.safeParse({ firstName: firstName.trim(), lastName: lastName.trim() });
+      if (!nameResult.success) {
+        setErrorMessage(nameResult.error.errors[0].message);
+        return;
+      }
+      submitMagicLink(emailResult.data, nameResult.data.firstName, nameResult.data.lastName);
+    } else {
+      // Existing user or not yet checked — submit without names
+      submitMagicLink(emailResult.data);
+    }
   }
 
   async function handleResend() {
@@ -93,6 +137,9 @@ export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
     setCooldown(0);
     setSubmittedEmail("");
     setEmail("");
+    setFirstName("");
+    setLastName("");
+    setIsExistingUser(null);
   }
 
   if (state === "sent") {
@@ -206,13 +253,41 @@ export function MagicLinkForm({ onGoogleLogin }: MagicLinkFormProps) {
             autoComplete="email"
             placeholder="you@example.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => handleEmailChange(e.target.value)}
             disabled={isLoading}
           />
           {emailError && (
             <p className="text-sm text-destructive">{emailError}</p>
           )}
         </div>
+        {showNameFields && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="magic-first-name">First name</Label>
+              <Input
+                id="magic-first-name"
+                type="text"
+                autoComplete="given-name"
+                placeholder="Jane"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="magic-last-name">Last name</Label>
+              <Input
+                id="magic-last-name"
+                type="text"
+                autoComplete="family-name"
+                placeholder="Doe"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                disabled={isLoading}
+              />
+            </div>
+          </div>
+        )}
 
         {errorMessage && (
           <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-md">

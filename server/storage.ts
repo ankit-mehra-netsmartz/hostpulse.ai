@@ -415,11 +415,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDataSourcesByUser(userId: string): Promise<DataSource[]> {
-    return db.select().from(dataSources).where(eq(dataSources.userId, userId));
+    return db.select().from(dataSources).where(eq(dataSources.userId, userId)).orderBy(dataSources.createdAt);
   }
 
   async getDataSourcesByWorkspace(workspaceId: string): Promise<DataSource[]> {
-    return db.select().from(dataSources).where(eq(dataSources.workspaceId, workspaceId));
+    return db.select().from(dataSources).where(eq(dataSources.workspaceId, workspaceId)).orderBy(dataSources.createdAt);
   }
 
   async getAllDataSources(): Promise<DataSource[]> {

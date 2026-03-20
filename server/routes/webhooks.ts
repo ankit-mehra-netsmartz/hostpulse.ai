@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { logger } from "../logger";
 import { config } from "../config";
+import { hospitable_connect } from "../services/hospitable-connect";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -1545,6 +1546,51 @@ Respond in JSON format:
         workspaceId: logWorkspaceId,
         processingTimeMs: Date.now() - startTime,
       });
+      res.status(500).json({ message: "Failed to process webhook" });
+    }
+  });
+
+  // =====================
+  // Hospitable Connect Webhooks (Airbnb)
+  // =====================
+
+  app.post("/api/webhooks/hospitable-connect", async (req, res) => {
+    const eventType = req.body?.action || "unknown";
+
+    try {
+      // const signature = req.headers["x-hospitable-signature"] as string;
+      // const payload = JSON.stringify(req.body);
+
+      // Verify webhook signature
+      // if (!hospitable_connect.verifyWebhookSignature(payload, signature)) {
+      //   logger.warn(
+      //     "Webhook",
+      //     `Invalid Hospitable Connect signature for event: ${eventType}`,
+      //   );
+      //   return res.status(401).json({ message: "Invalid signature" });
+      // }
+
+      // Handle different webhook events
+      if (eventType === "channel.activated") {
+        await hospitable_connect.handleWebhook(req.body);
+        logger.info(
+          "Webhook",
+          `Processed Hospitable Connect channel.activated event`,
+        );
+      } else {
+        logger.debug(
+          "Webhook",
+          `Ignoring Hospitable Connect event type: ${eventType}`,
+        );
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error(
+        "Webhook",
+        `Error processing Hospitable Connect webhook (${eventType}):`,
+        error,
+      );
       res.status(500).json({ message: "Failed to process webhook" });
     }
   });

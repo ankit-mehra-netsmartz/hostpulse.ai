@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, real } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  varchar,
+  timestamp,
+  boolean,
+  integer,
+  jsonb,
+  real,
+} from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -18,16 +27,19 @@ export const PROPERTY_MANAGEMENT_SOFTWARE = {
   OTHER: "other",
 } as const;
 
-// Data Sources (Hospitable connections)
+// Data Sources (Hospitable or Airbnb via Hospitable Connect)
 export const dataSources = pgTable("data_sources", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
-  provider: varchar("provider").notNull().default("hospitable"),
+  provider: varchar("provider").notNull().default("hospitable"), // "hospitable" or "airbnb"
   name: varchar("name").notNull(),
-  accessToken: text("access_token"),
-  refreshToken: text("refresh_token"),
-  tokenExpiresAt: timestamp("token_expires_at"),
+  accessToken: text("access_token"), // For Hospitable OAuth
+  refreshToken: text("refresh_token"), // For Hospitable OAuth
+  tokenExpiresAt: timestamp("token_expires_at"), // For Hospitable OAuth
+  externalCustomerId: varchar("external_customer_id"), // For Airbnb (Hospitable Connect customer ID)
   isConnected: boolean("is_connected").notNull().default(false),
   lastSyncAt: timestamp("last_sync_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -40,7 +52,9 @@ export const dataSourcesRelations = relations(dataSources, ({ many }) => ({
 
 // Listings
 export const listings = pgTable("listings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   dataSourceId: varchar("data_source_id").notNull(),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
@@ -55,7 +69,9 @@ export const listings = pgTable("listings", {
   bathrooms: real("bathrooms"),
   isActive: boolean("is_active").notNull().default(true),
   lastAnalyzedAt: timestamp("last_analyzed_at"),
-  autoAnalysisEnabled: boolean("auto_analysis_enabled").notNull().default(false),
+  autoAnalysisEnabled: boolean("auto_analysis_enabled")
+    .notNull()
+    .default(false),
   // Enhanced property data
   headline: text("headline"),
   description: text("description"),
@@ -70,7 +86,12 @@ export const listings = pgTable("listings", {
   wifiName: text("wifi_name"),
   amenities: jsonb("amenities").$type<string[]>(),
   images: jsonb("images").$type<string[]>(),
-  houseRules: jsonb("house_rules").$type<{ pets_allowed?: boolean; smoking_allowed?: boolean; events_allowed?: boolean; children_allowed?: boolean }>(),
+  houseRules: jsonb("house_rules").$type<{
+    pets_allowed?: boolean;
+    smoking_allowed?: boolean;
+    events_allowed?: boolean;
+    children_allowed?: boolean;
+  }>(),
   ownerName: varchar("owner_name"),
   accountEmail: varchar("account_email"),
   lastSyncedAt: timestamp("last_synced_at"),
@@ -79,8 +100,13 @@ export const listings = pgTable("listings", {
   // "active" = normal synced property, "pending_sync" = new from webhook needs user action
   // "pending_delete" = deleted in external system, user must confirm, "pending_merge" = merged in external system
   webhookStatus: varchar("webhook_status").default("active"),
-  webhookPendingData: jsonb("webhook_pending_data"),  // Stores incoming webhook data for user review
-  platformIds: jsonb("platform_ids").$type<{ airbnb?: string; vrbo?: string; bookingCom?: string; [key: string]: string | undefined }>(),
+  webhookPendingData: jsonb("webhook_pending_data"), // Stores incoming webhook data for user review
+  platformIds: jsonb("platform_ids").$type<{
+    airbnb?: string;
+    vrbo?: string;
+    bookingCom?: string;
+    [key: string]: string | undefined;
+  }>(),
   defaultProcedureId: varchar("default_procedure_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -141,9 +167,29 @@ export interface CategoryAnalysis {
   alternativeHero?: { photoIndex: number; reason: string } | null;
   top5Strengths?: string[];
   top5Weaknesses?: string[];
-  top5Alternatives?: { currentIndex: number; suggestedIndex: number; reason: string }[];
-  heroRecommendation?: { photoIndex: number; reason: string; strengths?: string[]; weaknesses?: string[]; confidenceScore?: number; alternativePhotoIndex?: number | null; alternativeReason?: string | null };
-  top5Recommendations?: { photoIndex: number; reason: string; order: number; strengths?: string[]; weaknesses?: string[]; alternativePhotoIndex?: number | null; alternativeReason?: string | null }[];
+  top5Alternatives?: {
+    currentIndex: number;
+    suggestedIndex: number;
+    reason: string;
+  }[];
+  heroRecommendation?: {
+    photoIndex: number;
+    reason: string;
+    strengths?: string[];
+    weaknesses?: string[];
+    confidenceScore?: number;
+    alternativePhotoIndex?: number | null;
+    alternativeReason?: string | null;
+  };
+  top5Recommendations?: {
+    photoIndex: number;
+    reason: string;
+    order: number;
+    strengths?: string[];
+    weaknesses?: string[];
+    alternativePhotoIndex?: number | null;
+    alternativeReason?: string | null;
+  }[];
   duplicateWarnings?: string[];
   overallAssessment?: string;
   selectionAnalyzedAt?: string;
@@ -151,7 +197,9 @@ export interface CategoryAnalysis {
 
 // Listing Analyses
 export const listingAnalyses = pgTable("listing_analyses", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   listingId: varchar("listing_id").notNull(),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
@@ -175,7 +223,9 @@ export const listingAnalyses = pgTable("listing_analyses", {
   guestFavAnalysis: jsonb("guest_fav_analysis").$type<CategoryAnalysis>(),
   titleAnalysis: jsonb("title_analysis").$type<CategoryAnalysis>(),
   sleepAnalysis: jsonb("sleep_analysis").$type<CategoryAnalysis>(),
-  superhostStatusAnalysis: jsonb("superhost_status_analysis").$type<CategoryAnalysis>(),
+  superhostStatusAnalysis: jsonb(
+    "superhost_status_analysis",
+  ).$type<CategoryAnalysis>(),
   descriptionAnalysis: jsonb("description_analysis").$type<CategoryAnalysis>(),
   idealAnalysis: jsonb("ideal_analysis").$type<CategoryAnalysis>(),
   // Ideal Guest Profile
@@ -185,25 +235,34 @@ export const listingAnalyses = pgTable("listing_analyses", {
   reservationCount: integer("reservation_count"),
   conversationCount: integer("conversation_count"),
   // Photo analysis phase tracking
-  photoAnalysisStatus: varchar("photo_analysis_status").$type<"pending" | "in_progress" | "complete">().default("pending"),
+  photoAnalysisStatus: varchar("photo_analysis_status")
+    .$type<"pending" | "in_progress" | "complete">()
+    .default("pending"),
   photoAnalysisProgress: integer("photo_analysis_progress").default(0),
   photoAnalysisTotalPhotos: integer("photo_analysis_total_photos").default(0),
   overallGrade: varchar("overall_grade"),
-  completedCategories: jsonb("completed_categories").$type<string[]>().default([]),
+  completedCategories: jsonb("completed_categories")
+    .$type<string[]>()
+    .default([]),
   analyzedAt: timestamp("analyzed_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const listingAnalysesRelations = relations(listingAnalyses, ({ one }) => ({
-  listing: one(listings, {
-    fields: [listingAnalyses.listingId],
-    references: [listings.id],
+export const listingAnalysesRelations = relations(
+  listingAnalyses,
+  ({ one }) => ({
+    listing: one(listings, {
+      fields: [listingAnalyses.listingId],
+      references: [listings.id],
+    }),
   }),
-}));
+);
 
 // AI Usage Logs for tracking OpenAI API usage
 export const aiUsageLogs = pgTable("ai_usage_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   label: varchar("label").notNull(),
   model: varchar("model").notNull(),
@@ -217,7 +276,9 @@ export const aiUsageLogs = pgTable("ai_usage_logs", {
 
 // Webhook logs for tracking incoming webhooks
 export const webhookLogs = pgTable("webhook_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   source: varchar("source").notNull(),
   eventType: varchar("event_type").notNull(),
   status: varchar("status").notNull(),
@@ -240,7 +301,9 @@ export interface PhotoTechnicalDetails {
 }
 
 export const photoAnalyses = pgTable("photo_analyses", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   listingId: varchar("listing_id").notNull(),
   photoIndex: integer("photo_index").notNull(),
   photoUrl: text("photo_url").notNull(),
@@ -272,11 +335,13 @@ export const photoAnalysesRelations = relations(photoAnalyses, ({ one }) => ({
 
 export type PhotoAnalysis = typeof photoAnalyses.$inferSelect;
 
-export const insertPhotoAnalysisSchema = createInsertSchema(photoAnalyses).omit({
-  id: true,
-  analyzedAt: true,
-  createdAt: true,
-});
+export const insertPhotoAnalysisSchema = createInsertSchema(photoAnalyses).omit(
+  {
+    id: true,
+    analyzedAt: true,
+    createdAt: true,
+  },
+);
 
 export type InsertPhotoAnalysis = z.infer<typeof insertPhotoAnalysisSchema>;
 
@@ -298,7 +363,9 @@ export interface CategoryRatings {
 
 // Reservations (synced from Hospitable)
 export const reservations = pgTable("reservations", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   listingId: varchar("listing_id").notNull(),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
@@ -315,7 +382,9 @@ export const reservations = pgTable("reservations", {
   publicReview: text("public_review"),
   privateRemarks: text("private_remarks"),
   hostReply: text("host_reply"),
-  conversationHistory: jsonb("conversation_history").$type<ConversationMessage[]>(),
+  conversationHistory: jsonb("conversation_history").$type<
+    ConversationMessage[]
+  >(),
   reviewPostedAt: timestamp("review_posted_at"),
   tagsProcessedAt: timestamp("tags_processed_at"),
   themeEligibleAt: timestamp("theme_eligible_at"),
@@ -340,17 +409,22 @@ export interface ConversationMessage {
   timestamp: string;
 }
 
-export const reservationsRelations = relations(reservations, ({ one, many }) => ({
-  listing: one(listings, {
-    fields: [reservations.listingId],
-    references: [listings.id],
+export const reservationsRelations = relations(
+  reservations,
+  ({ one, many }) => ({
+    listing: one(listings, {
+      fields: [reservations.listingId],
+      references: [listings.id],
+    }),
+    tags: many(tags),
   }),
-  tags: many(tags),
-}));
+);
 
 // Themes - categories that group related tags
 export const themes = pgTable("themes", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
   name: varchar("name").notNull(),
@@ -367,17 +441,63 @@ export const themes = pgTable("themes", {
 
 // Default themes that are seeded for every workspace
 export const DEFAULT_THEMES = [
-  { name: "Maintenance", icon: "🔧", description: "Issues related to property maintenance, repairs, and upkeep" },
-  { name: "Cleanliness", icon: "✨", description: "Feedback about cleaning quality, hygiene, and tidiness" },
-  { name: "Communication", icon: "💬", description: "Guest-host communication, responsiveness, and clarity" },
-  { name: "Amenities", icon: "🏠", description: "Feedback about property features, appliances, and amenities" },
-  { name: "Supplies", icon: "🧴", description: "Consumables, toiletries, kitchen supplies, and essentials" },
-  { name: "Check-In Process", icon: "🔑", description: "Arrival experience, key access, and check-in instructions" },
-  { name: "Access", icon: "🚪", description: "Entry points, parking, building access, and navigation" },
-  { name: "Safety", icon: "🛡️", description: "Security concerns, smoke detectors, locks, and safety equipment" },
-  { name: "Accessibility", icon: "♿", description: "Accessibility features and accommodations for guests with disabilities" },
-  { name: "Pest Control", icon: "🐜", description: "Issues with insects, rodents, or other pests" },
-  { name: "Unassigned", icon: "📋", description: "Tags that haven't been categorized into a specific theme yet" },
+  {
+    name: "Maintenance",
+    icon: "🔧",
+    description: "Issues related to property maintenance, repairs, and upkeep",
+  },
+  {
+    name: "Cleanliness",
+    icon: "✨",
+    description: "Feedback about cleaning quality, hygiene, and tidiness",
+  },
+  {
+    name: "Communication",
+    icon: "💬",
+    description: "Guest-host communication, responsiveness, and clarity",
+  },
+  {
+    name: "Amenities",
+    icon: "🏠",
+    description: "Feedback about property features, appliances, and amenities",
+  },
+  {
+    name: "Supplies",
+    icon: "🧴",
+    description: "Consumables, toiletries, kitchen supplies, and essentials",
+  },
+  {
+    name: "Check-In Process",
+    icon: "🔑",
+    description: "Arrival experience, key access, and check-in instructions",
+  },
+  {
+    name: "Access",
+    icon: "🚪",
+    description: "Entry points, parking, building access, and navigation",
+  },
+  {
+    name: "Safety",
+    icon: "🛡️",
+    description:
+      "Security concerns, smoke detectors, locks, and safety equipment",
+  },
+  {
+    name: "Accessibility",
+    icon: "♿",
+    description:
+      "Accessibility features and accommodations for guests with disabilities",
+  },
+  {
+    name: "Pest Control",
+    icon: "🐜",
+    description: "Issues with insects, rodents, or other pests",
+  },
+  {
+    name: "Unassigned",
+    icon: "📋",
+    description: "Tags that haven't been categorized into a specific theme yet",
+  },
 ] as const;
 
 export const themesRelations = relations(themes, ({ many }) => ({
@@ -386,7 +506,9 @@ export const themesRelations = relations(themes, ({ many }) => ({
 
 // Tags - AI-generated insights from reservation analysis
 export const tags = pgTable("tags", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
   listingId: varchar("listing_id").notNull(),
@@ -426,7 +548,9 @@ export const tagsRelations = relations(tags, ({ one, many }) => ({
 
 // Tasks - actionable items from AI suggestions
 export const tasks = pgTable("tasks", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id"),
   tagId: varchar("tag_id"),
@@ -489,13 +613,15 @@ export const insertThemeSchema = createInsertSchema(themes).omit({
   updatedAt: true,
 });
 
-export const insertTagSchema = createInsertSchema(tags).omit({
-  id: true,
-  updatedAt: true,
-}).extend({
-  // Allow optional createdAt override (for backdating tags to reservation checkout date)
-  createdAt: z.date().optional(),
-});
+export const insertTagSchema = createInsertSchema(tags)
+  .omit({
+    id: true,
+    updatedAt: true,
+  })
+  .extend({
+    // Allow optional createdAt override (for backdating tags to reservation checkout date)
+    createdAt: z.date().optional(),
+  });
 
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true,
@@ -522,14 +648,18 @@ export interface AiUsageLogWithUser extends AiUsageLog {
 
 // System Settings for global configuration (like AI model selection)
 export const systemSettings = pgTable("system_settings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   key: varchar("key").notNull().unique(),
   value: text("value").notNull(),
   updatedAt: timestamp("updated_at").defaultNow(),
   updatedBy: varchar("updated_by"),
 });
 
-export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({
+export const insertSystemSettingSchema = createInsertSchema(
+  systemSettings,
+).omit({
   id: true,
   updatedAt: true,
 });
@@ -541,17 +671,67 @@ export type SystemSetting = typeof systemSettings.$inferSelect;
 // Currently only OpenAI models are supported via Replit AI Integrations
 export const AI_MODELS = {
   // OpenAI models (supported via Replit AI Integrations)
-  "gpt-4.1-mini": { provider: "openai", name: "GPT-4.1 Mini", inputCost: 0.0004, outputCost: 0.0016 },
-  "gpt-4.1": { provider: "openai", name: "GPT-4.1", inputCost: 0.002, outputCost: 0.008 },
-  "gpt-4.1-nano": { provider: "openai", name: "GPT-4.1 Nano", inputCost: 0.0001, outputCost: 0.0004 },
-  "gpt-4o": { provider: "openai", name: "GPT-4o", inputCost: 0.0025, outputCost: 0.01 },
-  "gpt-4o-mini": { provider: "openai", name: "GPT-4o Mini", inputCost: 0.00015, outputCost: 0.0006 },
+  "gpt-4.1-mini": {
+    provider: "openai",
+    name: "GPT-4.1 Mini",
+    inputCost: 0.0004,
+    outputCost: 0.0016,
+  },
+  "gpt-4.1": {
+    provider: "openai",
+    name: "GPT-4.1",
+    inputCost: 0.002,
+    outputCost: 0.008,
+  },
+  "gpt-4.1-nano": {
+    provider: "openai",
+    name: "GPT-4.1 Nano",
+    inputCost: 0.0001,
+    outputCost: 0.0004,
+  },
+  "gpt-4o": {
+    provider: "openai",
+    name: "GPT-4o",
+    inputCost: 0.0025,
+    outputCost: 0.01,
+  },
+  "gpt-4o-mini": {
+    provider: "openai",
+    name: "GPT-4o Mini",
+    inputCost: 0.00015,
+    outputCost: 0.0006,
+  },
   // Grok/xAI models (supported via OpenRouter)
-  "x-ai/grok-4.1-fast": { provider: "openrouter", name: "Grok 4.1 Fast", inputCost: 0.003, outputCost: 0.015 },
-  "x-ai/grok-4-fast": { provider: "openrouter", name: "Grok 4 Fast", inputCost: 0.003, outputCost: 0.015 },
-  "x-ai/grok-4": { provider: "openrouter", name: "Grok 4", inputCost: 0.003, outputCost: 0.015 },
-  "x-ai/grok-3": { provider: "openrouter", name: "Grok 3", inputCost: 0.003, outputCost: 0.015 },
-  "x-ai/grok-3-mini": { provider: "openrouter", name: "Grok 3 Mini", inputCost: 0.0003, outputCost: 0.0005 },
+  "x-ai/grok-4.1-fast": {
+    provider: "openrouter",
+    name: "Grok 4.1 Fast",
+    inputCost: 0.003,
+    outputCost: 0.015,
+  },
+  "x-ai/grok-4-fast": {
+    provider: "openrouter",
+    name: "Grok 4 Fast",
+    inputCost: 0.003,
+    outputCost: 0.015,
+  },
+  "x-ai/grok-4": {
+    provider: "openrouter",
+    name: "Grok 4",
+    inputCost: 0.003,
+    outputCost: 0.015,
+  },
+  "x-ai/grok-3": {
+    provider: "openrouter",
+    name: "Grok 3",
+    inputCost: 0.003,
+    outputCost: 0.015,
+  },
+  "x-ai/grok-3-mini": {
+    provider: "openrouter",
+    name: "Grok 3 Mini",
+    inputCost: 0.0003,
+    outputCost: 0.0005,
+  },
 } as const;
 
 export type AIModelId = keyof typeof AI_MODELS;
@@ -568,19 +748,25 @@ export const insertListingSchema = createInsertSchema(listings).omit({
   updatedAt: true,
 });
 
-export const insertListingAnalysisSchema = createInsertSchema(listingAnalyses).omit({
+export const insertListingAnalysisSchema = createInsertSchema(
+  listingAnalyses,
+).omit({
   id: true,
   createdAt: true,
 });
 
-export const updateListingAnalysisSchema = insertListingAnalysisSchema.partial().omit({
-  listingId: true,
-  userId: true,
-});
+export const updateListingAnalysisSchema = insertListingAnalysisSchema
+  .partial()
+  .omit({
+    listingId: true,
+    userId: true,
+  });
 
 // Workspaces (multi-account support)
 export const workspaces = pgTable("workspaces", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   name: varchar("name").notNull(),
   propertyManagementSoftware: varchar("property_management_software").notNull(),
   customSoftwareName: varchar("custom_software_name"),
@@ -594,7 +780,9 @@ export const workspaces = pgTable("workspaces", {
 });
 
 export const workspaceMembers = pgTable("workspace_members", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   userId: varchar("user_id"),
   invitedEmail: varchar("invited_email"),
@@ -605,12 +793,15 @@ export const workspaceMembers = pgTable("workspace_members", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const workspaceMembersRelations = relations(workspaceMembers, ({ one }) => ({
-  workspace: one(workspaces, {
-    fields: [workspaceMembers.workspaceId],
-    references: [workspaces.id],
+export const workspaceMembersRelations = relations(
+  workspaceMembers,
+  ({ one }) => ({
+    workspace: one(workspaces, {
+      fields: [workspaceMembers.workspaceId],
+      references: [workspaces.id],
+    }),
   }),
-}));
+);
 
 export const insertWorkspaceSchema = createInsertSchema(workspaces).omit({
   id: true,
@@ -618,7 +809,9 @@ export const insertWorkspaceSchema = createInsertSchema(workspaces).omit({
   updatedAt: true,
 });
 
-export const insertWorkspaceMemberSchema = createInsertSchema(workspaceMembers).omit({
+export const insertWorkspaceMemberSchema = createInsertSchema(
+  workspaceMembers,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -646,17 +839,20 @@ export const TEAM_ROLES = {
   MEMBER: "member",
 } as const;
 
-export type TeamRole = typeof TEAM_ROLES[keyof typeof TEAM_ROLES];
+export type TeamRole = (typeof TEAM_ROLES)[keyof typeof TEAM_ROLES];
 
 export const TEAM_MEMBER_STATUS = {
   ACTIVE: "active",
   INVITED: "invited",
 } as const;
 
-export type TeamMemberStatus = typeof TEAM_MEMBER_STATUS[keyof typeof TEAM_MEMBER_STATUS];
+export type TeamMemberStatus =
+  (typeof TEAM_MEMBER_STATUS)[keyof typeof TEAM_MEMBER_STATUS];
 
 export const teams = pgTable("teams", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   name: varchar("name").notNull(),
   description: text("description"),
@@ -670,7 +866,9 @@ export const teamsRelations = relations(teams, ({ many }) => ({
 }));
 
 export const teamMembers = pgTable("team_members", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   teamId: varchar("team_id").notNull(),
   userId: varchar("user_id"),
   invitedEmail: varchar("invited_email"),
@@ -724,7 +922,9 @@ export interface TeamMemberWithUser extends TeamMember {
 
 // Reviews Summaries - Cached AI-generated summaries for properties and property combinations
 export const reviewsSummaries = pgTable("reviews_summaries", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   listingIds: jsonb("listing_ids").$type<string[]>().notNull(),
   listingIdsHash: varchar("listing_ids_hash").notNull(),
@@ -737,7 +937,9 @@ export const reviewsSummaries = pgTable("reviews_summaries", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertReviewsSummarySchema = createInsertSchema(reviewsSummaries).omit({
+export const insertReviewsSummarySchema = createInsertSchema(
+  reviewsSummaries,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -752,7 +954,9 @@ export type ReviewsSummary = typeof reviewsSummaries.$inferSelect;
 
 // Lumi Views - Custom filter views for scoping queries
 export const lumiViews = pgTable("lumi_views", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id").notNull(),
   name: varchar("name").notNull(),
@@ -781,7 +985,9 @@ export type LumiView = typeof lumiViews.$inferSelect;
 
 // Lumi Queries - User query history
 export const lumiQueries = pgTable("lumi_queries", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id").notNull(),
   conversationId: varchar("conversation_id"), // Groups related queries for follow-up questions
@@ -795,11 +1001,13 @@ export const lumiQueries = pgTable("lumi_queries", {
     tags?: number;
     themes?: number;
   }>(),
-  thinkingSteps: jsonb("thinking_steps").$type<{
-    step: string;
-    status: "pending" | "complete";
-    detail?: string;
-  }[]>(),
+  thinkingSteps: jsonb("thinking_steps").$type<
+    {
+      step: string;
+      status: "pending" | "complete";
+      detail?: string;
+    }[]
+  >(),
   isSaved: boolean("is_saved").notNull().default(false),
   textMatchOnly: boolean("text_match_only").notNull().default(false),
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
@@ -818,7 +1026,9 @@ export type LumiQuery = typeof lumiQueries.$inferSelect;
 
 // Lumi Workflows - Predefined analysis templates
 export const lumiWorkflows = pgTable("lumi_workflows", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id"),
   name: varchar("name").notNull(),
   description: text("description"),
@@ -842,7 +1052,9 @@ export type LumiWorkflow = typeof lumiWorkflows.$inferSelect;
 
 // Lumi Documents - Generated artifacts and saved outputs
 export const lumiDocuments = pgTable("lumi_documents", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id").notNull(),
   queryId: varchar("query_id"),
@@ -882,7 +1094,9 @@ export const AI_PROMPT_CATEGORIES = {
 
 // Existing ai_prompts table - matching database structure with new fields
 export const aiPrompts = pgTable("ai_prompts", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   name: varchar("name").notNull(), // human-readable name
   description: text("description"), // what this prompt is for
   promptTemplate: text("prompt_template"), // the actual prompt template
@@ -909,7 +1123,9 @@ export type AiPrompt = typeof aiPrompts.$inferSelect;
 
 // Generated Content - Stores AI-generated listing content (titles, descriptions)
 export const generatedContent = pgTable("generated_content", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   listingId: varchar("listing_id").notNull(),
   workspaceId: varchar("workspace_id").notNull(),
   contentType: varchar("content_type").notNull(), // "titles", "about", "the_space"
@@ -930,12 +1146,16 @@ export interface GeneratedDescription {
   theSpace: string;
 }
 
-export const insertGeneratedContentSchema = createInsertSchema(generatedContent).omit({
+export const insertGeneratedContentSchema = createInsertSchema(
+  generatedContent,
+).omit({
   id: true,
   createdAt: true,
 });
 
-export type InsertGeneratedContent = z.infer<typeof insertGeneratedContentSchema>;
+export type InsertGeneratedContent = z.infer<
+  typeof insertGeneratedContentSchema
+>;
 export type GeneratedContent = typeof generatedContent.$inferSelect;
 
 // Airbnb Scans - stores data scraped from public Airbnb listing pages
@@ -962,7 +1182,9 @@ export interface HostProfileData {
 }
 
 export const airbnbScans = pgTable("airbnb_scans", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   listingId: varchar("listing_id").notNull(),
   workspaceId: varchar("workspace_id").notNull(),
   airbnbUrl: text("airbnb_url").notNull(),
@@ -975,10 +1197,23 @@ export const airbnbScans = pgTable("airbnb_scans", {
   hostProfile: jsonb("host_profile").$type<HostProfileData>(),
   rawSnapshot: jsonb("raw_snapshot"), // Stores raw extracted data for debugging
   aiAnalysis: jsonb("ai_analysis").$type<{
-    whereYoullSleepAnalysis?: { grade: string; feedback: string; suggestions: string[] };
+    whereYoullSleepAnalysis?: {
+      grade: string;
+      feedback: string;
+      suggestions: string[];
+    };
     superhostAnalysis?: { hasStatus: boolean; feedback: string };
-    guestFavoriteAnalysis?: { tier: string | null; feedback: string; suggestions: string[] };
-    hostProfileAnalysis?: { grade: string; photoQuality: string; feedback: string; suggestions: string[] };
+    guestFavoriteAnalysis?: {
+      tier: string | null;
+      feedback: string;
+      suggestions: string[];
+    };
+    hostProfileAnalysis?: {
+      grade: string;
+      photoQuality: string;
+      feedback: string;
+      suggestions: string[];
+    };
     overallScore?: number;
   }>(),
   scannedAt: timestamp("scanned_at"),
@@ -1024,15 +1259,25 @@ export interface SpeedTestResults {
     themes: SpeedTestStageResult;
   };
   totals: {
-    openai: { responseTime: number; tokens: { input: number; output: number }; estimatedCost: number };
-    grok: { responseTime: number; tokens: { input: number; output: number }; estimatedCost: number };
+    openai: {
+      responseTime: number;
+      tokens: { input: number; output: number };
+      estimatedCost: number;
+    };
+    grok: {
+      responseTime: number;
+      tokens: { input: number; output: number };
+      estimatedCost: number;
+    };
   };
   overallWinner: "openai" | "grok" | "tie";
   reservationComparisons: any[];
 }
 
 export const speedTestRuns = pgTable("speed_test_runs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   listingId: varchar("listing_id").notNull(),
   listingName: varchar("listing_name"),
@@ -1071,7 +1316,7 @@ export type SpeedTestRun = typeof speedTestRuns.$inferSelect;
 // Changelog System
 export const CHANGELOG_STATUS = {
   SUGGESTED: "suggested",
-  APPROVED: "approved", 
+  APPROVED: "approved",
   SENT: "sent",
   DISMISSED: "dismissed",
 } as const;
@@ -1083,7 +1328,9 @@ export const CHANGELOG_NOTIFICATION_TYPE = {
 } as const;
 
 export const changelogEntries = pgTable("changelog_entries", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description").notNull(),
   location: varchar("location", { length: 255 }), // Where in the product
@@ -1097,7 +1344,9 @@ export const changelogEntries = pgTable("changelog_entries", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertChangelogEntrySchema = createInsertSchema(changelogEntries).omit({
+export const insertChangelogEntrySchema = createInsertSchema(
+  changelogEntries,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -1107,13 +1356,19 @@ export type InsertChangelogEntry = z.infer<typeof insertChangelogEntrySchema>;
 export type ChangelogEntry = typeof changelogEntries.$inferSelect;
 
 export const changelogSettings = pgTable("changelog_settings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   sendTime: varchar("send_time", { length: 10 }).notNull().default("09:00"), // HH:MM format, Eastern time
-  notificationType: varchar("notification_type", { length: 20 }).notNull().default("both"),
+  notificationType: varchar("notification_type", { length: 20 })
+    .notNull()
+    .default("both"),
   isEnabled: boolean("is_enabled").notNull().default(true),
   lastSentAt: timestamp("last_sent_at"),
   // Auto-suggest settings
-  suggestTime: varchar("suggest_time", { length: 10 }).notNull().default("18:00"), // HH:MM format, Eastern time
+  suggestTime: varchar("suggest_time", { length: 10 })
+    .notNull()
+    .default("18:00"), // HH:MM format, Eastern time
   suggestIntervalDays: integer("suggest_interval_days").notNull().default(1), // 1 = daily, 2 = every 2 days, etc.
   suggestEnabled: boolean("suggest_enabled").notNull().default(true),
   lastProcessedCommit: varchar("last_processed_commit", { length: 64 }), // SHA of last analyzed commit
@@ -1122,13 +1377,17 @@ export const changelogSettings = pgTable("changelog_settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertChangelogSettingsSchema = createInsertSchema(changelogSettings).omit({
+export const insertChangelogSettingsSchema = createInsertSchema(
+  changelogSettings,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export type InsertChangelogSettings = z.infer<typeof insertChangelogSettingsSchema>;
+export type InsertChangelogSettings = z.infer<
+  typeof insertChangelogSettingsSchema
+>;
 export type ChangelogSettings = typeof changelogSettings.$inferSelect;
 
 // ===== PROCEDURES SYSTEM =====
@@ -1200,7 +1459,9 @@ export interface GpsLocation {
 
 // Procedure templates
 export const procedures = pgTable("procedures", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   createdByUserId: varchar("created_by_user_id").notNull(),
   listingId: varchar("listing_id"), // Optional property association
@@ -1226,7 +1487,9 @@ export const proceduresRelations = relations(procedures, ({ one, many }) => ({
 
 // Individual steps within a procedure
 export const procedureSteps = pgTable("procedure_steps", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   procedureId: varchar("procedure_id").notNull(),
   stepOrder: integer("step_order").notNull(),
   label: varchar("label", { length: 255 }).notNull(),
@@ -1247,9 +1510,15 @@ export const procedureSteps = pgTable("procedure_steps", {
   // Step completion tracking for mobile
   completions: jsonb("completions").$type<MobileStepCompletion[]>(),
   // Verification requirements
-  requiresPhotoVerification: boolean("requires_photo_verification").notNull().default(false),
-  photoVerificationMode: varchar("photo_verification_mode", { length: 20 }).notNull().default("none"),
-  requiresGpsVerification: boolean("requires_gps_verification").notNull().default(false),
+  requiresPhotoVerification: boolean("requires_photo_verification")
+    .notNull()
+    .default(false),
+  photoVerificationMode: varchar("photo_verification_mode", { length: 20 })
+    .notNull()
+    .default("none"),
+  requiresGpsVerification: boolean("requires_gps_verification")
+    .notNull()
+    .default(false),
   // Optional: expected GPS location for verification (lat/lng bounds)
   expectedGpsLocation: jsonb("expected_gps_location").$type<GpsLocation>(),
   gpsRadiusMeters: integer("gps_radius_meters"), // Allowed radius from expected location
@@ -1266,27 +1535,34 @@ export const procedureStepsRelations = relations(procedureSteps, ({ one }) => ({
 
 // Links a procedure to a task
 export const procedureAssignments = pgTable("procedure_assignments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   taskId: varchar("task_id").notNull(),
   procedureId: varchar("procedure_id").notNull(),
   assignedByUserId: varchar("assigned_by_user_id").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const procedureAssignmentsRelations = relations(procedureAssignments, ({ one }) => ({
-  task: one(tasks, {
-    fields: [procedureAssignments.taskId],
-    references: [tasks.id],
+export const procedureAssignmentsRelations = relations(
+  procedureAssignments,
+  ({ one }) => ({
+    task: one(tasks, {
+      fields: [procedureAssignments.taskId],
+      references: [tasks.id],
+    }),
+    procedure: one(procedures, {
+      fields: [procedureAssignments.procedureId],
+      references: [procedures.id],
+    }),
   }),
-  procedure: one(procedures, {
-    fields: [procedureAssignments.procedureId],
-    references: [procedures.id],
-  }),
-}));
+);
 
 // Tracks a user's overall progress on a procedure for a specific task
 export const procedureCompletions = pgTable("procedure_completions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   procedureAssignmentId: varchar("procedure_assignment_id").notNull(),
   completedByUserId: varchar("completed_by_user_id").notNull(),
   status: varchar("status", { length: 20 }).notNull().default("not_started"),
@@ -1302,17 +1578,22 @@ export const procedureCompletions = pgTable("procedure_completions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const procedureCompletionsRelations = relations(procedureCompletions, ({ one, many }) => ({
-  procedureAssignment: one(procedureAssignments, {
-    fields: [procedureCompletions.procedureAssignmentId],
-    references: [procedureAssignments.id],
+export const procedureCompletionsRelations = relations(
+  procedureCompletions,
+  ({ one, many }) => ({
+    procedureAssignment: one(procedureAssignments, {
+      fields: [procedureCompletions.procedureAssignmentId],
+      references: [procedureAssignments.id],
+    }),
+    stepCompletions: many(stepCompletions),
   }),
-  stepCompletions: many(stepCompletions),
-}));
+);
 
 // Individual step completion tracking with verification
 export const stepCompletions = pgTable("step_completions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   procedureCompletionId: varchar("procedure_completion_id").notNull(),
   procedureStepId: varchar("procedure_step_id").notNull(),
   isCompleted: boolean("is_completed").notNull().default(false),
@@ -1327,16 +1608,19 @@ export const stepCompletions = pgTable("step_completions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const stepCompletionsRelations = relations(stepCompletions, ({ one }) => ({
-  procedureCompletion: one(procedureCompletions, {
-    fields: [stepCompletions.procedureCompletionId],
-    references: [procedureCompletions.id],
+export const stepCompletionsRelations = relations(
+  stepCompletions,
+  ({ one }) => ({
+    procedureCompletion: one(procedureCompletions, {
+      fields: [stepCompletions.procedureCompletionId],
+      references: [procedureCompletions.id],
+    }),
+    procedureStep: one(procedureSteps, {
+      fields: [stepCompletions.procedureStepId],
+      references: [procedureSteps.id],
+    }),
   }),
-  procedureStep: one(procedureSteps, {
-    fields: [stepCompletions.procedureStepId],
-    references: [procedureSteps.id],
-  }),
-}));
+);
 
 // Insert schemas for Procedures
 export const insertProcedureSchema = createInsertSchema(procedures).omit({
@@ -1345,24 +1629,32 @@ export const insertProcedureSchema = createInsertSchema(procedures).omit({
   updatedAt: true,
 });
 
-export const insertProcedureStepSchema = createInsertSchema(procedureSteps).omit({
+export const insertProcedureStepSchema = createInsertSchema(
+  procedureSteps,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const insertProcedureAssignmentSchema = createInsertSchema(procedureAssignments).omit({
+export const insertProcedureAssignmentSchema = createInsertSchema(
+  procedureAssignments,
+).omit({
   id: true,
   createdAt: true,
 });
 
-export const insertProcedureCompletionSchema = createInsertSchema(procedureCompletions).omit({
+export const insertProcedureCompletionSchema = createInsertSchema(
+  procedureCompletions,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const insertStepCompletionSchema = createInsertSchema(stepCompletions).omit({
+export const insertStepCompletionSchema = createInsertSchema(
+  stepCompletions,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -1375,10 +1667,14 @@ export type Procedure = typeof procedures.$inferSelect;
 export type InsertProcedureStep = z.infer<typeof insertProcedureStepSchema>;
 export type ProcedureStep = typeof procedureSteps.$inferSelect;
 
-export type InsertProcedureAssignment = z.infer<typeof insertProcedureAssignmentSchema>;
+export type InsertProcedureAssignment = z.infer<
+  typeof insertProcedureAssignmentSchema
+>;
 export type ProcedureAssignment = typeof procedureAssignments.$inferSelect;
 
-export type InsertProcedureCompletion = z.infer<typeof insertProcedureCompletionSchema>;
+export type InsertProcedureCompletion = z.infer<
+  typeof insertProcedureCompletionSchema
+>;
 export type ProcedureCompletion = typeof procedureCompletions.$inferSelect;
 
 export type InsertStepCompletion = z.infer<typeof insertStepCompletionSchema>;
@@ -1386,7 +1682,9 @@ export type StepCompletion = typeof stepCompletions.$inferSelect;
 
 // Global procedure templates (managed by Super Admin)
 export const procedureTemplates = pgTable("procedure_templates", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   updatedByUserId: varchar("updated_by_user_id"),
@@ -1395,47 +1693,69 @@ export const procedureTemplates = pgTable("procedure_templates", {
 });
 
 export const procedureTemplateSteps = pgTable("procedure_template_steps", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   templateId: varchar("template_id").notNull(),
   stepOrder: integer("step_order").notNull(),
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
   moduleTitle: varchar("module_title", { length: 255 }),
   moduleOrder: integer("module_order"),
-  requiresPhotoVerification: boolean("requires_photo_verification").notNull().default(false),
-  photoVerificationMode: varchar("photo_verification_mode", { length: 20 }).notNull().default("none"),
-  requiresGpsVerification: boolean("requires_gps_verification").notNull().default(false),
+  requiresPhotoVerification: boolean("requires_photo_verification")
+    .notNull()
+    .default(false),
+  photoVerificationMode: varchar("photo_verification_mode", { length: 20 })
+    .notNull()
+    .default("none"),
+  requiresGpsVerification: boolean("requires_gps_verification")
+    .notNull()
+    .default(false),
   gpsRadiusMeters: integer("gps_radius_meters"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const procedureTemplateStepsRelations = relations(procedureTemplateSteps, ({ one }) => ({
-  template: one(procedureTemplates, {
-    fields: [procedureTemplateSteps.templateId],
-    references: [procedureTemplates.id],
+export const procedureTemplateStepsRelations = relations(
+  procedureTemplateSteps,
+  ({ one }) => ({
+    template: one(procedureTemplates, {
+      fields: [procedureTemplateSteps.templateId],
+      references: [procedureTemplates.id],
+    }),
   }),
-}));
+);
 
-export const procedureTemplatesRelations = relations(procedureTemplates, ({ many }) => ({
-  steps: many(procedureTemplateSteps),
-}));
+export const procedureTemplatesRelations = relations(
+  procedureTemplates,
+  ({ many }) => ({
+    steps: many(procedureTemplateSteps),
+  }),
+);
 
-export const insertProcedureTemplateSchema = createInsertSchema(procedureTemplates).omit({
+export const insertProcedureTemplateSchema = createInsertSchema(
+  procedureTemplates,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const insertProcedureTemplateStepSchema = createInsertSchema(procedureTemplateSteps).omit({
+export const insertProcedureTemplateStepSchema = createInsertSchema(
+  procedureTemplateSteps,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export type InsertProcedureTemplate = z.infer<typeof insertProcedureTemplateSchema>;
+export type InsertProcedureTemplate = z.infer<
+  typeof insertProcedureTemplateSchema
+>;
 export type ProcedureTemplate = typeof procedureTemplates.$inferSelect;
-export type InsertProcedureTemplateStep = z.infer<typeof insertProcedureTemplateStepSchema>;
+export type InsertProcedureTemplateStep = z.infer<
+  typeof insertProcedureTemplateStepSchema
+>;
 export type ProcedureTemplateStep = typeof procedureTemplateSteps.$inferSelect;
 
 export interface ProcedureTemplateWithSteps extends ProcedureTemplate {
@@ -1458,7 +1778,9 @@ export interface ProcedureCompletionWithDetails extends ProcedureCompletion {
 
 // Task Modules - Reusable templates containing grouped items
 export const taskModules = pgTable("task_modules", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   description: text("description"),
@@ -1475,25 +1797,36 @@ export const taskModulesRelations = relations(taskModules, ({ many }) => ({
 
 // Task Module Items - Individual items within a module template
 export const taskModuleItems = pgTable("task_module_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   moduleId: varchar("module_id").notNull(),
   itemOrder: integer("item_order").notNull(),
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
-  requiresPhotoVerification: boolean("requires_photo_verification").notNull().default(false),
-  photoVerificationMode: varchar("photo_verification_mode", { length: 20 }).notNull().default("none"),
-  requiresGpsVerification: boolean("requires_gps_verification").notNull().default(false),
+  requiresPhotoVerification: boolean("requires_photo_verification")
+    .notNull()
+    .default(false),
+  photoVerificationMode: varchar("photo_verification_mode", { length: 20 })
+    .notNull()
+    .default("none"),
+  requiresGpsVerification: boolean("requires_gps_verification")
+    .notNull()
+    .default(false),
   media: jsonb("media").$type<ProcedureStepMedia[]>(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const taskModuleItemsRelations = relations(taskModuleItems, ({ one }) => ({
-  module: one(taskModules, {
-    fields: [taskModuleItems.moduleId],
-    references: [taskModules.id],
+export const taskModuleItemsRelations = relations(
+  taskModuleItems,
+  ({ one }) => ({
+    module: one(taskModules, {
+      fields: [taskModuleItems.moduleId],
+      references: [taskModules.id],
+    }),
   }),
-}));
+);
 
 // Insert schemas for Task Modules
 export const insertTaskModuleSchema = createInsertSchema(taskModules).omit({
@@ -1502,7 +1835,9 @@ export const insertTaskModuleSchema = createInsertSchema(taskModules).omit({
   updatedAt: true,
 });
 
-export const insertTaskModuleItemSchema = createInsertSchema(taskModuleItems).omit({
+export const insertTaskModuleItemSchema = createInsertSchema(
+  taskModuleItems,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -1526,7 +1861,9 @@ export interface TaskModuleWithItems extends TaskModule {
 
 // Folders - Organize files and links into categories
 export const folders = pgTable("folders", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   name: varchar("name").notNull(),
   description: text("description"),
@@ -1554,7 +1891,9 @@ export const FOLDER_ITEM_TYPES = {
 
 // Folder Items - Files (PDFs, images) and links (videos, external resources)
 export const folderItems = pgTable("folder_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   folderId: varchar("folder_id").notNull(),
   type: varchar("type").notNull(), // "file" or "link"
@@ -1586,7 +1925,9 @@ export const folderItemsRelations = relations(folderItems, ({ one, many }) => ({
 
 // Task Attachments - Link folder items to tasks/sub-tasks
 export const taskAttachments = pgTable("task_attachments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   folderItemId: varchar("folder_item_id").notNull(),
   taskId: varchar("task_id"), // Link to main task
@@ -1596,16 +1937,19 @@ export const taskAttachments = pgTable("task_attachments", {
   attachedAt: timestamp("attached_at").defaultNow(),
 });
 
-export const taskAttachmentsRelations = relations(taskAttachments, ({ one }) => ({
-  folderItem: one(folderItems, {
-    fields: [taskAttachments.folderItemId],
-    references: [folderItems.id],
+export const taskAttachmentsRelations = relations(
+  taskAttachments,
+  ({ one }) => ({
+    folderItem: one(folderItems, {
+      fields: [taskAttachments.folderItemId],
+      references: [folderItems.id],
+    }),
+    task: one(tasks, {
+      fields: [taskAttachments.taskId],
+      references: [tasks.id],
+    }),
   }),
-  task: one(tasks, {
-    fields: [taskAttachments.taskId],
-    references: [tasks.id],
-  }),
-}));
+);
 
 // Insert schemas
 export const insertFolderSchema = createInsertSchema(folders).omit({
@@ -1620,7 +1964,9 @@ export const insertFolderItemSchema = createInsertSchema(folderItems).omit({
   updatedAt: true,
 });
 
-export const insertTaskAttachmentSchema = createInsertSchema(taskAttachments).omit({
+export const insertTaskAttachmentSchema = createInsertSchema(
+  taskAttachments,
+).omit({
   id: true,
   attachedAt: true,
 });
@@ -1642,7 +1988,9 @@ export interface FolderWithItems extends Folder {
 
 // Notion Connections - OAuth connections to Notion workspaces for data sync
 export const notionConnections = pgTable("notion_connections", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(), // HostPulse workspace
   notionWorkspaceId: varchar("notion_workspace_id").notNull(), // Notion workspace ID
   notionWorkspaceName: varchar("notion_workspace_name"),
@@ -1673,18 +2021,24 @@ export const notionConnections = pgTable("notion_connections", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertNotionConnectionSchema = createInsertSchema(notionConnections).omit({
+export const insertNotionConnectionSchema = createInsertSchema(
+  notionConnections,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export type InsertNotionConnection = z.infer<typeof insertNotionConnectionSchema>;
+export type InsertNotionConnection = z.infer<
+  typeof insertNotionConnectionSchema
+>;
 export type NotionConnection = typeof notionConnections.$inferSelect;
 
 // Reports - saved report configurations
 export const reports = pgTable("reports", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id").notNull(),
   name: varchar("name").notNull(),
@@ -1718,7 +2072,9 @@ export type Report = typeof reports.$inferSelect;
 
 // Nudge Campaigns - SMS conversation campaigns to collect guest feedback
 export const nudgeCampaigns = pgTable("nudge_campaigns", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
   workspaceId: varchar("workspace_id").notNull(),
   name: varchar("name").notNull(),
@@ -1733,13 +2089,18 @@ export const nudgeCampaigns = pgTable("nudge_campaigns", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const nudgeCampaignsRelations = relations(nudgeCampaigns, ({ many }) => ({
-  conversations: many(nudgeConversations),
-}));
+export const nudgeCampaignsRelations = relations(
+  nudgeCampaigns,
+  ({ many }) => ({
+    conversations: many(nudgeConversations),
+  }),
+);
 
 // Nudge Conversations - Individual SMS conversations with guests
 export const nudgeConversations = pgTable("nudge_conversations", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   campaignId: varchar("campaign_id").notNull(),
   reservationId: varchar("reservation_id"),
   workspaceId: varchar("workspace_id").notNull(),
@@ -1757,25 +2118,30 @@ export const nudgeConversations = pgTable("nudge_conversations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const nudgeConversationsRelations = relations(nudgeConversations, ({ one, many }) => ({
-  campaign: one(nudgeCampaigns, {
-    fields: [nudgeConversations.campaignId],
-    references: [nudgeCampaigns.id],
+export const nudgeConversationsRelations = relations(
+  nudgeConversations,
+  ({ one, many }) => ({
+    campaign: one(nudgeCampaigns, {
+      fields: [nudgeConversations.campaignId],
+      references: [nudgeCampaigns.id],
+    }),
+    reservation: one(reservations, {
+      fields: [nudgeConversations.reservationId],
+      references: [reservations.id],
+    }),
+    listing: one(listings, {
+      fields: [nudgeConversations.listingId],
+      references: [listings.id],
+    }),
+    messages: many(nudgeMessages),
   }),
-  reservation: one(reservations, {
-    fields: [nudgeConversations.reservationId],
-    references: [reservations.id],
-  }),
-  listing: one(listings, {
-    fields: [nudgeConversations.listingId],
-    references: [listings.id],
-  }),
-  messages: many(nudgeMessages),
-}));
+);
 
 // Nudge Messages - Individual messages in a conversation
 export const nudgeMessages = pgTable("nudge_messages", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   conversationId: varchar("conversation_id").notNull(),
   direction: varchar("direction").notNull(), // inbound (from guest) or outbound (to guest)
   content: text("content").notNull(),
@@ -1793,13 +2159,17 @@ export const nudgeMessagesRelations = relations(nudgeMessages, ({ one }) => ({
 }));
 
 // Insert schemas
-export const insertNudgeCampaignSchema = createInsertSchema(nudgeCampaigns).omit({
+export const insertNudgeCampaignSchema = createInsertSchema(
+  nudgeCampaigns,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const insertNudgeConversationSchema = createInsertSchema(nudgeConversations).omit({
+export const insertNudgeConversationSchema = createInsertSchema(
+  nudgeConversations,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -1813,7 +2183,9 @@ export const insertNudgeMessageSchema = createInsertSchema(nudgeMessages).omit({
 export type InsertNudgeCampaign = z.infer<typeof insertNudgeCampaignSchema>;
 export type NudgeCampaign = typeof nudgeCampaigns.$inferSelect;
 
-export type InsertNudgeConversation = z.infer<typeof insertNudgeConversationSchema>;
+export type InsertNudgeConversation = z.infer<
+  typeof insertNudgeConversationSchema
+>;
 export type NudgeConversation = typeof nudgeConversations.$inferSelect;
 
 export type InsertNudgeMessage = z.infer<typeof insertNudgeMessageSchema>;
@@ -1838,7 +2210,9 @@ export interface NudgeCampaignWithStats extends NudgeCampaign {
 // ============================================================
 
 export const cleaners = pgTable("cleaners", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   type: varchar("type", { length: 20 }).notNull().default("individual"), // individual, company, cleaning_manager
@@ -1849,8 +2223,12 @@ export const cleaners = pgTable("cleaners", {
   phone: varchar("phone", { length: 50 }),
   notifyByEmail: boolean("notify_by_email").notNull().default(true),
   notifyBySms: boolean("notify_by_sms").notNull().default(true),
-  reminderTiming: varchar("reminder_timing", { length: 20 }).notNull().default("morning_of"), // night_before, morning_of
-  reminderTime: varchar("reminder_time", { length: 5 }).notNull().default("08:00"), // HH:mm format e.g. "08:00", "19:00"
+  reminderTiming: varchar("reminder_timing", { length: 20 })
+    .notNull()
+    .default("morning_of"), // night_before, morning_of
+  reminderTime: varchar("reminder_time", { length: 5 })
+    .notNull()
+    .default("08:00"), // HH:mm format e.g. "08:00", "19:00"
   isActive: boolean("is_active").notNull().default(true),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -1870,34 +2248,43 @@ export const cleanersRelations = relations(cleaners, ({ one, many }) => ({
 }));
 
 export const cleanerAssignments = pgTable("cleaner_assignments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   cleanerId: varchar("cleaner_id").notNull(),
   listingId: varchar("listing_id").notNull(),
   procedureId: varchar("procedure_id"),
-  assignmentMode: varchar("assignment_mode", { length: 20 }).notNull().default("manual"), // auto, manual
+  assignmentMode: varchar("assignment_mode", { length: 20 })
+    .notNull()
+    .default("manual"), // auto, manual
   defaultMemberId: varchar("default_member_id"), // member cleaner auto-assigned when assignmentMode=auto
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const cleanerAssignmentsRelations = relations(cleanerAssignments, ({ one }) => ({
-  cleaner: one(cleaners, {
-    fields: [cleanerAssignments.cleanerId],
-    references: [cleaners.id],
+export const cleanerAssignmentsRelations = relations(
+  cleanerAssignments,
+  ({ one }) => ({
+    cleaner: one(cleaners, {
+      fields: [cleanerAssignments.cleanerId],
+      references: [cleaners.id],
+    }),
+    listing: one(listings, {
+      fields: [cleanerAssignments.listingId],
+      references: [listings.id],
+    }),
+    procedure: one(procedures, {
+      fields: [cleanerAssignments.procedureId],
+      references: [procedures.id],
+    }),
   }),
-  listing: one(listings, {
-    fields: [cleanerAssignments.listingId],
-    references: [listings.id],
-  }),
-  procedure: one(procedures, {
-    fields: [cleanerAssignments.procedureId],
-    references: [procedures.id],
-  }),
-}));
+);
 
 export const cleaningTasks = pgTable("cleaning_tasks", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   cleanerId: varchar("cleaner_id").notNull(),
   assignedMemberId: varchar("assigned_member_id"), // specific team member when cleaner is a company
@@ -1921,55 +2308,71 @@ export const cleaningTasks = pgTable("cleaning_tasks", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const cleaningTasksRelations = relations(cleaningTasks, ({ one, many }) => ({
-  cleaner: one(cleaners, {
-    fields: [cleaningTasks.cleanerId],
-    references: [cleaners.id],
-    relationName: "cleanerTasks",
+export const cleaningTasksRelations = relations(
+  cleaningTasks,
+  ({ one, many }) => ({
+    cleaner: one(cleaners, {
+      fields: [cleaningTasks.cleanerId],
+      references: [cleaners.id],
+      relationName: "cleanerTasks",
+    }),
+    assignedMember: one(cleaners, {
+      fields: [cleaningTasks.assignedMemberId],
+      references: [cleaners.id],
+      relationName: "memberTasks",
+    }),
+    listing: one(listings, {
+      fields: [cleaningTasks.listingId],
+      references: [listings.id],
+    }),
+    reservation: one(reservations, {
+      fields: [cleaningTasks.reservationId],
+      references: [reservations.id],
+    }),
+    items: many(cleaningTaskItems),
   }),
-  assignedMember: one(cleaners, {
-    fields: [cleaningTasks.assignedMemberId],
-    references: [cleaners.id],
-    relationName: "memberTasks",
-  }),
-  listing: one(listings, {
-    fields: [cleaningTasks.listingId],
-    references: [listings.id],
-  }),
-  reservation: one(reservations, {
-    fields: [cleaningTasks.reservationId],
-    references: [reservations.id],
-  }),
-  items: many(cleaningTaskItems),
-}));
+);
 
 export const cleaningTaskItems = pgTable("cleaning_task_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   cleaningTaskId: varchar("cleaning_task_id").notNull(),
   stepOrder: integer("step_order").notNull(),
   label: varchar("label", { length: 255 }).notNull(),
   description: text("description"),
   moduleTitle: varchar("module_title", { length: 255 }),
   moduleOrder: integer("module_order"),
-  requiresPhotoVerification: boolean("requires_photo_verification").notNull().default(false),
-  photoVerificationMode: varchar("photo_verification_mode", { length: 20 }).notNull().default("none"),
-  requiresGpsVerification: boolean("requires_gps_verification").notNull().default(false),
+  requiresPhotoVerification: boolean("requires_photo_verification")
+    .notNull()
+    .default(false),
+  photoVerificationMode: varchar("photo_verification_mode", { length: 20 })
+    .notNull()
+    .default("none"),
+  requiresGpsVerification: boolean("requires_gps_verification")
+    .notNull()
+    .default(false),
   isCompleted: boolean("is_completed").notNull().default(false),
   completedAt: timestamp("completed_at"),
   photoUrl: text("photo_url"),
   notes: text("notes"),
 });
 
-export const cleaningTaskItemsRelations = relations(cleaningTaskItems, ({ one }) => ({
-  cleaningTask: one(cleaningTasks, {
-    fields: [cleaningTaskItems.cleaningTaskId],
-    references: [cleaningTasks.id],
+export const cleaningTaskItemsRelations = relations(
+  cleaningTaskItems,
+  ({ one }) => ({
+    cleaningTask: one(cleaningTasks, {
+      fields: [cleaningTaskItems.cleaningTaskId],
+      references: [cleaningTasks.id],
+    }),
   }),
-}));
+);
 
 // Notification Templates for Cleaner Scheduling
 export const notificationTemplates = pgTable("notification_templates", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   type: varchar("type", { length: 50 }).notNull(), // reminder_email, reminder_sms, cancelled_email, cancelled_sms, changed_email, changed_sms
   subject: varchar("subject", { length: 500 }),
@@ -1986,7 +2389,9 @@ export const insertCleanerSchema = createInsertSchema(cleaners).omit({
   updatedAt: true,
 });
 
-export const insertCleanerAssignmentSchema = createInsertSchema(cleanerAssignments).omit({
+export const insertCleanerAssignmentSchema = createInsertSchema(
+  cleanerAssignments,
+).omit({
   id: true,
   createdAt: true,
 });
@@ -1997,11 +2402,15 @@ export const insertCleaningTaskSchema = createInsertSchema(cleaningTasks).omit({
   updatedAt: true,
 });
 
-export const insertCleaningTaskItemSchema = createInsertSchema(cleaningTaskItems).omit({
+export const insertCleaningTaskItemSchema = createInsertSchema(
+  cleaningTaskItems,
+).omit({
   id: true,
 });
 
-export const insertNotificationTemplateSchema = createInsertSchema(notificationTemplates).omit({
+export const insertNotificationTemplateSchema = createInsertSchema(
+  notificationTemplates,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -2011,16 +2420,22 @@ export const insertNotificationTemplateSchema = createInsertSchema(notificationT
 export type InsertCleaner = z.infer<typeof insertCleanerSchema>;
 export type Cleaner = typeof cleaners.$inferSelect;
 
-export type InsertCleanerAssignment = z.infer<typeof insertCleanerAssignmentSchema>;
+export type InsertCleanerAssignment = z.infer<
+  typeof insertCleanerAssignmentSchema
+>;
 export type CleanerAssignment = typeof cleanerAssignments.$inferSelect;
 
 export type InsertCleaningTask = z.infer<typeof insertCleaningTaskSchema>;
 export type CleaningTask = typeof cleaningTasks.$inferSelect;
 
-export type InsertCleaningTaskItem = z.infer<typeof insertCleaningTaskItemSchema>;
+export type InsertCleaningTaskItem = z.infer<
+  typeof insertCleaningTaskItemSchema
+>;
 export type CleaningTaskItem = typeof cleaningTaskItems.$inferSelect;
 
-export type InsertNotificationTemplate = z.infer<typeof insertNotificationTemplateSchema>;
+export type InsertNotificationTemplate = z.infer<
+  typeof insertNotificationTemplateSchema
+>;
 export type NotificationTemplate = typeof notificationTemplates.$inferSelect;
 
 export const NOTIFICATION_TEMPLATE_TYPES = [
@@ -2032,7 +2447,8 @@ export const NOTIFICATION_TEMPLATE_TYPES = [
   "changed_sms",
 ] as const;
 
-export type NotificationTemplateType = typeof NOTIFICATION_TEMPLATE_TYPES[number];
+export type NotificationTemplateType =
+  (typeof NOTIFICATION_TEMPLATE_TYPES)[number];
 
 export const NOTIFICATION_SHORT_CODES = [
   { code: "{{property_name}}", description: "Property/listing name" },
@@ -2048,22 +2464,54 @@ export const NOTIFICATION_SHORT_CODES = [
 // Extended types for UI
 export interface CleanerWithAssignments extends Cleaner {
   assignments: (CleanerAssignment & {
-    listing?: { id: string; name: string; internalName: string | null; imageUrl: string | null; address: string | null };
+    listing?: {
+      id: string;
+      name: string;
+      internalName: string | null;
+      imageUrl: string | null;
+      address: string | null;
+    };
     procedure?: { id: string; title: string } | null;
   })[];
   members?: Cleaner[];
 }
 
 export interface CleaningTaskWithDetails extends CleaningTask {
-  cleaner: { id: string; name: string; email: string | null; phone: string | null; type?: string };
-  assignedMember?: { id: string; name: string; email: string | null; phone: string | null } | null;
-  listing: { id: string; name: string; internalName: string | null; imageUrl: string | null; address: string | null };
-  reservation?: { id: string; status: string; checkInDate: string | null; checkOutDate: string | null; confirmationCode: string | null; platform: string } | null;
+  cleaner: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    type?: string;
+  };
+  assignedMember?: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  listing: {
+    id: string;
+    name: string;
+    internalName: string | null;
+    imageUrl: string | null;
+    address: string | null;
+  };
+  reservation?: {
+    id: string;
+    status: string;
+    checkInDate: string | null;
+    checkOutDate: string | null;
+    confirmationCode: string | null;
+    platform: string;
+  } | null;
   items: CleaningTaskItem[];
 }
 
 export const reviewRemovalCases = pgTable("review_removal_cases", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   workspaceId: varchar("workspace_id").notNull(),
   reservationId: varchar("reservation_id"),
   listingId: varchar("listing_id"),
@@ -2087,11 +2535,15 @@ export const reviewRemovalCases = pgTable("review_removal_cases", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const insertReviewRemovalCaseSchema = createInsertSchema(reviewRemovalCases).omit({
+export const insertReviewRemovalCaseSchema = createInsertSchema(
+  reviewRemovalCases,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export type InsertReviewRemovalCase = z.infer<typeof insertReviewRemovalCaseSchema>;
+export type InsertReviewRemovalCase = z.infer<
+  typeof insertReviewRemovalCaseSchema
+>;
 export type ReviewRemovalCase = typeof reviewRemovalCases.$inferSelect;

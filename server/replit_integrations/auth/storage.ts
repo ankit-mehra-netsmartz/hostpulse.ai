@@ -130,10 +130,21 @@ class AuthStorage implements IAuthStorage {
         return { user: existing, isGoogleAccount: true };
       }
 
-      if (existing.accountType !== ACCOUNT_TYPES.EMAIL) {
+      // Update name/accountType if needed
+      const needsNameUpdate =
+        (firstName && !existing.firstName) ||
+        (lastName && !existing.lastName);
+      const needsAccountTypeUpdate = existing.accountType !== ACCOUNT_TYPES.EMAIL;
+
+      if (needsNameUpdate || needsAccountTypeUpdate) {
         const [updated] = await db
           .update(users)
-          .set({ accountType: ACCOUNT_TYPES.EMAIL, updatedAt: new Date() })
+          .set({
+            ...(needsAccountTypeUpdate ? { accountType: ACCOUNT_TYPES.EMAIL } : {}),
+            ...(firstName && !existing.firstName ? { firstName } : {}),
+            ...(lastName && !existing.lastName ? { lastName } : {}),
+            updatedAt: new Date(),
+          })
           .where(eq(users.id, existing.id))
           .returning();
         return { user: updated, isNewUser: false, isGoogleAccount: false };
@@ -204,10 +215,10 @@ class AuthStorage implements IAuthStorage {
       return { success: false, reason: "expired" as const };
     }
 
-    // Mark email as verified
+    // Mark email as verified and update last login timestamp
     await db
       .update(users)
-      .set({ emailVerified: true, updatedAt: new Date() })
+      .set({ emailVerified: true, lastLoginAt: new Date() })
       .where(eq(users.id, row.userId));
 
     // Consume token (one-time use)

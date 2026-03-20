@@ -6,6 +6,7 @@ import { config } from "../config";
 import { logger } from "../logger";
 import { insertDataSourceSchema } from "@shared/schema";
 import { fetchHospitableProperties } from "../services/hospitable";
+import { hospitable_connect } from "../services/hospitable-connect";
 import {
   getUserId,
   getWorkspaceId,
@@ -281,9 +282,6 @@ export function registerDataSourceRoutes(
         logger.error("OAuth", "Failed to parse OAuth state:", e);
       }
     }
-
-    const originUrl = stateData.originUrl;
-    const getRedirectBase = () => originUrl || "";
 
     // Verify CSRF nonce
     const sessionNonce = (req.session as any)?.oauthNonce;
@@ -775,6 +773,163 @@ export function registerDataSourceRoutes(
     }
   });
 
+  // =====================
+  // Hospitable Connect (Airbnb via platform token)
+  // =====================
+
+  app.post(
+    "/api/hospitable-connect/customers",
+    isAuthenticated,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req);
+        const workspaceId = getWorkspaceId(req) || undefined;
+        const { email, name } = req.body;
+
+        if (!email) {
+          return res.status(400).json({ message: "Email is required" });
+        }
+
+        const originHost = req.get("host") || "";
+        const originProtocol =
+          req.get("x-forwarded-proto") || req.protocol || "https";
+        const originUrl = `${originProtocol}://${originHost}`;
+
+        const customerId = await hospitable_connect.createCustomerForWorkspace(
+          email,
+          userId,
+          name,
+          workspaceId,
+          originUrl,
+        );
+
+        res.json({ customerId });
+      } catch (error) {
+        logger.error("Connect", "Error creating customer:", error);
+        res.status(500).json({ message: "Failed to create customer" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/hospitable-connect/auth-codes",
+    isAuthenticated,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req);
+        const workspaceId = getWorkspaceId(req) || undefined;
+        const { customerId: providedCustomerId, returnUrl } = req.body;
+
+        const originHost = req.get("host") || "";
+        const originProtocol =
+          req.get("x-forwarded-proto") || req.protocol || "https";
+        const defaultReturnUrl = `${originProtocol}://${originHost}/data-sources`;
+        const finalReturnUrl = returnUrl || defaultReturnUrl;
+        const customerId = providedCustomerId || userId;
+
+        const {
+          authCode,
+          expiresAt,
+          returnUrl: connectReturnUrl,
+        } = await hospitable_connect.generateAuthCodeForCustomer(
+          customerId,
+          finalReturnUrl,
+        );
+
+        // Idempotent: only create a data source if one doesn't already exist
+        // for this user + customerId combination.
+        // isConnected stays false until the channel.activated webhook fires.
+        const existingAirbnbSources = await storage.getDataSourcesByUser(userId);
+        const existingAirbnb = existingAirbnbSources.find(
+          (ds) => ds.provider === "airbnb" && ds.externalCustomerId === customerId,
+        );
+        if (!existingAirbnb) {
+          await storage.createDataSource({
+            userId,
+            workspaceId,
+            provider: "airbnb",
+            name: "Airbnb Account",
+            externalCustomerId: customerId,
+            isConnected: false,
+          });
+          logger.info(
+            "Connect",
+            `Created Airbnb Connect data source for customer ${customerId}, user ${userId}`,
+          );
+        } else {
+          logger.info(
+            "Connect",
+            `Airbnb Connect data source already exists (${existingAirbnb.id}) for customer ${customerId} — skipping creation`,
+          );
+        }
+
+        const computedReturnUrl =
+          connectReturnUrl ||
+          `https://connect.hospitable.com/authorize?auth_code=${encodeURIComponent(authCode)}`;
+
+        res.json({
+          authCode,
+          expiresAt,
+          data: {
+            return_url: computedReturnUrl,
+          },
+        });
+      } catch (error) {
+        logger.error("Connect", "Error generating auth code:", error);
+        res.status(500).json({ message: "Failed to generate auth code" });
+      }
+    },
+  );
+
+  // Called by the frontend after the user completes the Airbnb OAuth flow to
+  // mark the data source as connected and trigger an initial listing sync.
+  app.post(
+    "/api/hospitable-connect/activate",
+    isAuthenticated,
+    async (req, res) => {
+      try {
+        const userId = getUserId(req);
+        const customerId = req.body.customerId || userId;
+
+        const allSources = await storage.getDataSourcesByUser(userId);
+        const airbnbSource = allSources.find(
+          (ds) =>
+            ds.provider === "airbnb" &&
+            ds.externalCustomerId === customerId,
+        );
+
+        if (!airbnbSource) {
+          return res
+            .status(404)
+            .json({ message: "Airbnb data source not found" });
+        }
+
+        // Mark as connected immediately so the frontend can proceed.
+        await storage.updateDataSource(airbnbSource.id, {
+          isConnected: true,
+        });
+        logger.info(
+          "Connect",
+          `Activated Airbnb data source ${airbnbSource.id} for user ${userId}`,
+        );
+
+        // Properties are NOT auto-imported here — the user selects and imports
+        // them manually from the Properties page, same as the Hospitable Public
+        // API flow (toggle to import).
+        res.json({ success: true, dataSourceId: airbnbSource.id });
+      } catch (error) {
+        logger.error(
+          "Connect",
+          "Error activating Airbnb data source:",
+          error,
+        );
+        res
+          .status(500)
+          .json({ message: "Failed to activate Airbnb connection" });
+      }
+    },
+  );
+
   // Refresh owner/account metadata for all existing listings under a data source
   app.post(
     "/api/data-sources/:id/refresh-owner-metadata",
@@ -789,18 +944,43 @@ export function registerDataSourceRoutes(
           return res.status(404).json({ message: "Data source not found" });
         }
 
-        const { data, error } = await fetchHospitableProperties(dataSourceId);
+        let properties: any[] = [];
 
-        if (error || !data) {
-          return res
-            .status(500)
-            .json({
+        if (dataSource.provider === "airbnb") {
+          if (!dataSource.externalCustomerId) {
+            return res.status(400).json({
+              message:
+                "Missing external customer ID for Airbnb Connect data source",
+            });
+          }
+
+          const connectListings = await hospitable_connect.getCustomerListings(
+            dataSource.externalCustomerId,
+          );
+
+          properties = connectListings.map((listing: any) => ({
+            id: listing.id,
+            name: listing.public_name || listing.private_name || listing.name || "Unnamed Listing",
+            public_name: listing.public_name || listing.private_name || listing.name || "Unnamed Listing",
+            picture: listing.picture,
+            owner: {
+              name: listing.channel?.name || listing.channels?.[0]?.name || undefined,
+              email: listing.channel?.email || listing.channels?.[0]?.email || undefined,
+            },
+            listings: [{ platform: listing.platform || "airbnb", platform_id: listing.platform_id }],
+          }));
+        } else {
+          const { data, error } = await fetchHospitableProperties(dataSourceId);
+
+          if (error || !data) {
+            return res.status(500).json({
               message: error || "Failed to fetch properties from Hospitable",
             });
+          }
+
+          properties = (data as any)?.data || [];
         }
 
-        // Hospitable API response wraps properties in a `data` array
-        const properties: any[] = (data as any)?.data || [];
         const existingListings =
           await storage.getListingsByDataSource(dataSourceId);
 
@@ -868,6 +1048,31 @@ export function registerDataSourceRoutes(
           return res.status(404).json({ message: "Data source not found" });
         }
 
+        if (dataSource.provider === "airbnb") {
+          if (!dataSource.externalCustomerId) {
+            return res.status(400).json({
+              message:
+                "Missing external customer ID for Airbnb Connect data source",
+            });
+          }
+
+          const connectListings = await hospitable_connect.getCustomerListings(
+            dataSource.externalCustomerId,
+          );
+
+          const mappedResponse = {
+            data: connectListings.map((listing: any) => ({
+              id: listing.id,
+              name: listing.public_name || listing.private_name || "Unnamed Listing",
+              public_name: listing.public_name || listing.private_name || "Unnamed Listing",
+              picture: listing.picture,
+              listings: [{ platform: listing.platform || "airbnb", platform_id: listing.platform_id }],
+            })),
+          };
+
+          return res.json(mappedResponse);
+        }
+
         const { data, error, statusCode } =
           await fetchHospitableProperties(dataSourceId);
 
@@ -892,6 +1097,91 @@ export function registerDataSourceRoutes(
     },
   );
 
+  // Fetch properties from ALL connected data sources for the current user/workspace
+  app.get("/api/properties/all", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const workspaceId = getWorkspaceId(req);
+
+      let allDataSources;
+      if (workspaceId && (await validateWorkspaceMembership(userId, workspaceId))) {
+        allDataSources = await storage.getDataSourcesByWorkspace(workspaceId);
+      } else {
+        allDataSources = await storage.getDataSourcesByUser(userId);
+      }
+
+      const connectedSources = allDataSources.filter((ds) => ds.isConnected);
+
+      if (connectedSources.length === 0) {
+        return res.json({ data: [] });
+      }
+
+      const allProperties: any[] = [];
+
+      for (const dataSource of connectedSources) {
+        try {
+          if (dataSource.provider === "airbnb") {
+            if (!dataSource.externalCustomerId) continue;
+            const connectListings = await hospitable_connect.getCustomerListings(
+              dataSource.externalCustomerId,
+            );
+            const mapped = connectListings.map((listing: any) => ({
+              id: listing.id,
+              name: listing.public_name || listing.private_name || "Unnamed Listing",
+              public_name: listing.public_name || listing.private_name || "Unnamed Listing",
+              picture: listing.picture,
+              property_type: listing.property_type,
+              address: listing.address,
+              capacity: listing.capacity,
+              bedrooms: listing.bedrooms,
+              bathrooms: listing.bathrooms,
+              amenities: listing.amenities,
+              description: listing.description,
+              summary: listing.summary,
+              owner: {
+                name: listing.channel?.name || listing.channels?.[0]?.name || undefined,
+                email: listing.channel?.email || listing.channels?.[0]?.email || undefined,
+              },
+              listings: [{ platform: listing.platform || "airbnb", platform_id: listing.platform_id }],
+              // Attach source metadata so client knows which data source to import through
+              _dataSourceId: dataSource.id,
+              _provider: dataSource.provider,
+            }));
+            allProperties.push(...mapped);
+          } else if (dataSource.provider === "hospitable") {
+            const { data, error } = await fetchHospitableProperties(dataSource.id);
+            if (error || !data) {
+              logger.error(
+                "DataSources",
+                `Error fetching properties for data source ${dataSource.id}:`,
+                error,
+              );
+              continue;
+            }
+            const props: any[] = (data as any)?.data || [];
+            const mapped = props.map((p: any) => ({
+              ...p,
+              _dataSourceId: dataSource.id,
+              _provider: dataSource.provider,
+            }));
+            allProperties.push(...mapped);
+          }
+        } catch (err) {
+          logger.error(
+            "DataSources",
+            `Error fetching properties for data source ${dataSource.id}:`,
+            err,
+          );
+        }
+      }
+
+      res.json({ data: allProperties });
+    } catch (error) {
+      logger.error("DataSources", "Error fetching all properties:", error);
+      res.status(500).json({ message: "Failed to fetch properties" });
+    }
+  });
+
   // Sync listings from data source
   app.post("/api/data-sources/:id/sync", isAuthenticated, async (req, res) => {
     try {
@@ -902,10 +1192,38 @@ export function registerDataSourceRoutes(
         return res.status(404).json({ message: "Data source not found" });
       }
 
-      await storage.updateDataSource(dataSource.id, { lastSyncAt: new Date() });
+      if (dataSource.provider === "airbnb") {
+        // Airbnb Connect data sources are synced via Hospitable Connect, not Public API
+        if (!dataSource.externalCustomerId) {
+          return res.status(400).json({
+            message: "Missing external customer ID for Airbnb Connect data source",
+          });
+        }
+        if (!dataSource.isConnected) {
+          return res.status(400).json({
+            message: "Airbnb Connect data source is not connected. Please re-authorize via Hospitable Connect.",
+          });
+        }
+        logger.info(
+          "DataSources",
+          `Triggering Connect sync for data source ${dataSource.id}, customer ${dataSource.externalCustomerId}`,
+        );
+        await hospitable_connect.syncConnectListings(
+          dataSource.id,
+          dataSource.externalCustomerId,
+        );
+      } else {
+        // For Hospitable Public API sources, just record the sync timestamp.
+        // Actual re-import is triggered by the user via /api/listings/import.
+        await storage.updateDataSource(dataSource.id, { lastSyncAt: new Date() });
+        logger.info(
+          "DataSources",
+          `Recorded sync timestamp for Hospitable data source ${dataSource.id}`,
+        );
+      }
 
-      const listings = await storage.getListingsByDataSource(dataSource.id);
-      res.json({ synced: listings.length, listings });
+      const currentListings = await storage.getListingsByDataSource(dataSource.id);
+      res.json({ synced: currentListings.length, listings: currentListings });
     } catch (error) {
       logger.error("DataSources", "Error syncing data source:", error);
       res.status(500).json({ message: "Failed to sync data source" });

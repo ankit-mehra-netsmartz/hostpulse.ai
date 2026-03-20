@@ -8,6 +8,8 @@ const MAGIC_LINK_COOLDOWN_MS = 60 * 1000;
 
 const requestMagicLinkSchema = z.object({
   email: z.string().email("Invalid email address"),
+  firstName: z.string().min(1).max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
 });
 
 // Register auth-specific routes
@@ -42,9 +44,12 @@ export function registerAuthRoutes(app: Express): void {
     }
 
     const normalizedEmail = parsed.data.email.trim().toLowerCase();
+    const { firstName, lastName } = parsed.data;
+    console.log(`[Auth] magic-link request: email=${normalizedEmail}, firstName=${firstName}, lastName=${lastName}`);
 
     try {
-      const result = await authStorage.upsertMagicUser(normalizedEmail);
+      const result = await authStorage.upsertMagicUser(normalizedEmail, firstName, lastName);
+      console.log(`[Auth] upsertMagicUser result: id=${result.user.id}, firstName=${result.user.firstName}, lastName=${result.user.lastName}, isNewUser=${result.isNewUser}`);
 
       if (result.isGoogleAccount) {
         return res.status(200).json({
@@ -84,6 +89,18 @@ export function registerAuthRoutes(app: Express): void {
     } catch (error) {
       console.error("[Auth] magic-link request error:", error);
       return res.status(500).json({ message: "Failed to send sign-in link." });
+    }
+  });
+
+  // Check if an email is already registered (used by the signup form to show/hide name fields)
+  app.get("/api/auth/check-email", async (req, res) => {
+    const email = ((req.query.email as string) || "").trim().toLowerCase();
+    if (!email) return res.json({ exists: false });
+    try {
+      const user = await authStorage.findUserByEmail(email);
+      return res.json({ exists: !!user });
+    } catch {
+      return res.json({ exists: false });
     }
   });
 

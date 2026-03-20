@@ -18,8 +18,8 @@ function getSslConfig(dbUrl: string): false | pg.ConnectionConfig["ssl"] {
 export const pool = new Pool({
   connectionString: config.database.url,
   max: 10,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 60000,
+  connectionTimeoutMillis: 60000,
   allowExitOnIdle: false,
   ssl: getSslConfig(config.database.url),
 });

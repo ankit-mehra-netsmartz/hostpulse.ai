@@ -532,10 +532,14 @@ export function registerListingRoutes(app: Express, storage: IStorage): void {
       
       if (!dataSource.isConnected) {
         logger.info('Listings', `Data source not connected: ${dataSourceId}`);
-        return res.status(400).json({ message: "Hospitable is not connected. Please reconnect your account in Data Sources." });
+        return res.status(400).json({ message: "Data source is not connected. Please reconnect in Data Sources." });
       }
-      
-      if (!dataSource.accessToken) {
+
+      // Airbnb Connect data sources authenticate via Hospitable's platform token,
+      // not via per-user OAuth tokens. Skip token validation for them.
+      const isConnectSource = dataSource.provider === 'airbnb';
+
+      if (!isConnectSource && !dataSource.accessToken) {
         logger.info('Listings', `No access token for data source: ${dataSourceId}`);
         return res.status(400).json({ message: "Hospitable connection expired. Please reconnect your account in Data Sources." });
       }
@@ -547,33 +551,40 @@ export function registerListingRoutes(app: Express, storage: IStorage): void {
       
       const existingListings = await storage.getListingsByDataSource(dataSourceId);
       
-      const { accessToken: validToken, error: tokenError } = await getValidAccessToken(dataSourceId);
-      if (!validToken) {
-        logger.info('Listings', `Failed to get valid access token: ${tokenError}`);
-        return res.status(401).json({ 
-          message: tokenError || "Unable to authenticate with Hospitable",
-          details: "Please reconnect your Hospitable account in Data Sources."
-        });
+      if (!isConnectSource) {
+        const { accessToken: validToken, error: tokenError } = await getValidAccessToken(dataSourceId);
+        if (!validToken) {
+          logger.info('Listings', `Failed to get valid access token: ${tokenError}`);
+          return res.status(401).json({ 
+            message: tokenError || "Unable to authenticate with Hospitable",
+            details: "Please reconnect your Hospitable account in Data Sources."
+          });
+        }
+        logger.info('Listings', `Validated access token for data source ${dataSourceId}`);
+      } else {
+        logger.info('Listings', `Skipping token validation for Airbnb Connect data source ${dataSourceId}`);
       }
-      logger.info('Listings', `Validated access token for data source ${dataSourceId}`);
       
       for (const property of properties) {
         let propertyDetails: any = null;
         let enrichedProperty: any = property;
-        try {
-          const { data: rawDetails, error: detailsError } = await hospitableApiRequest(
-            dataSourceId,
-            `/properties/${property.id}?include=details,listings,user`
-          );
-          if (rawDetails && !detailsError) {
-            propertyDetails = rawDetails?.data || rawDetails;
-            // Use the enriched property data (with user and listings) for owner resolution
-            enrichedProperty = propertyDetails || property;
-          } else if (detailsError) {
-            logger.error('Sync', `Error fetching details for ${property.name}:`, detailsError);
+        // Airbnb Connect data sources have no Public API access — skip server-side detail enrichment
+        if (!isConnectSource) {
+          try {
+            const { data: rawDetails, error: detailsError } = await hospitableApiRequest(
+              dataSourceId,
+              `/properties/${property.id}?include=details,listings,user`
+            );
+            if (rawDetails && !detailsError) {
+              propertyDetails = rawDetails?.data || rawDetails;
+              // Use the enriched property data (with user and listings) for owner resolution
+              enrichedProperty = propertyDetails || property;
+            } else if (detailsError) {
+              logger.error('Sync', `Error fetching details for ${property.public_name || property.name}:`, detailsError);
+            }
+          } catch (err) {
+            logger.error('Sync', `Error fetching details for ${property.public_name || property.name}:`, err);
           }
-        } catch (err) {
-          logger.error('Sync', `Error fetching details for ${property.name}:`, err);
         }
         
         const existing = existingListings.find(l => l.externalId === property.id);
@@ -656,54 +667,62 @@ export function registerListingRoutes(app: Express, storage: IStorage): void {
         ].filter(Boolean);
         
         let images: string[] = [];
-        try {
-          let nextEndpoint: string | null = `/properties/${property.id}/images`;
-          
-          while (nextEndpoint) {
-            const { data: imagesData, error: imagesError } = await hospitableApiRequest(
-              dataSourceId,
-              nextEndpoint
-            );
+        if (isConnectSource) {
+          // Airbnb Connect data sources: use `picture` directly — no Public API image endpoint
+          if (property.picture) {
+            images = [property.picture];
+          }
+          logger.info('Sync', `Connect source — using picture directly for ${property.public_name || property.name}: ${images.length} image(s)`);
+        } else {
+          try {
+            let nextEndpoint: string | null = `/properties/${property.id}/images`;
             
-            if (imagesData && !imagesError) {
-              logger.info('Sync', `Raw images response for ${property.public_name || property.name}:`, JSON.stringify(imagesData, null, 2));
+            while (nextEndpoint) {
+              const { data: imagesData, error: imagesError } = await hospitableApiRequest(
+                dataSourceId,
+                nextEndpoint
+              );
               
-              let imageItems: any[] = [];
-              if (Array.isArray(imagesData.data)) {
-                imageItems = imagesData.data;
-              } else if (Array.isArray(imagesData)) {
-                imageItems = imagesData;
-              } else if (imagesData.images && Array.isArray(imagesData.images)) {
-                imageItems = imagesData.images;
-              }
-              
-              const pageImages = imageItems.map((img: any) => {
-                return img.url || img.original_url || img.large_url || img.original || img.large || img.medium || img.thumbnail || img.src;
-              }).filter(Boolean);
-              
-              logger.info('Sync', `Extracted ${pageImages.length} images from page for ${property.public_name || property.name}:`, pageImages);
-              images.push(...pageImages);
-              
-              const nextUrl = imagesData.links?.next || imagesData.meta?.next || null;
-              if (nextUrl) {
-                nextEndpoint = nextUrl.replace('https://public.api.hospitable.com/v2', '');
+              if (imagesData && !imagesError) {
+                logger.info('Sync', `Raw images response for ${property.public_name || property.name}:`, JSON.stringify(imagesData, null, 2));
+                
+                let imageItems: any[] = [];
+                if (Array.isArray(imagesData.data)) {
+                  imageItems = imagesData.data;
+                } else if (Array.isArray(imagesData)) {
+                  imageItems = imagesData;
+                } else if (imagesData.images && Array.isArray(imagesData.images)) {
+                  imageItems = imagesData.images;
+                }
+                
+                const pageImages = imageItems.map((img: any) => {
+                  return img.url || img.original_url || img.large_url || img.original || img.large || img.medium || img.thumbnail || img.src;
+                }).filter(Boolean);
+                
+                logger.info('Sync', `Extracted ${pageImages.length} images from page for ${property.public_name || property.name}:`, pageImages);
+                images.push(...pageImages);
+                
+                const nextUrl = imagesData.links?.next || imagesData.meta?.next || null;
+                if (nextUrl) {
+                  nextEndpoint = nextUrl.replace('https://public.api.hospitable.com/v2', '');
+                } else {
+                  nextEndpoint = null;
+                }
               } else {
+                logger.info('Sync', `Failed to fetch images for property ${property.id}:`, imagesError);
                 nextEndpoint = null;
               }
-            } else {
-              logger.info('Sync', `Failed to fetch images for property ${property.id}:`, imagesError);
-              nextEndpoint = null;
             }
+          } catch (imgError) {
+            logger.error('Sync', `Error fetching images for property ${property.id}:`, imgError);
           }
-        } catch (imgError) {
-          logger.error('Sync', `Error fetching images for property ${property.id}:`, imgError);
-        }
-        
-        logger.info('Sync', `Total images synced for ${property.public_name || property.name}: ${images.length}`);
-        
-        if (images.length === 0 && property.picture) {
-          logger.info('Sync', `Using fallback picture for ${property.public_name || property.name}`);
-          images = [property.picture];
+          
+          logger.info('Sync', `Total images synced for ${property.public_name || property.name}: ${images.length}`);
+          
+          if (images.length === 0 && property.picture) {
+            logger.info('Sync', `Using fallback picture for ${property.public_name || property.name}`);
+            images = [property.picture];
+          }
         }
         
         const amenities = property.amenities?.map((a: any) => typeof a === 'string' ? a : a.name).filter(Boolean) || [];
