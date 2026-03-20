@@ -112,19 +112,71 @@ export default function ConnectDataSource() {
     enabled: !!activeWorkspace,
   });
 
-  // Listen for OAuth success/error messages from popup
-  // After the user returns from the Airbnb OAuth redirect, auto-activate the
-  // data source (marks it connected + syncs listings) without relying on a webhook.
+  // After the user returns from the Airbnb OAuth redirect, notify the backend
+  // and then POLL /api/data-sources until isConnected becomes true.
+  // isConnected is set exclusively by the "channel.activated" webhook from
+  // Hospitable — not by this client call.
   useEffect(() => {
     const pendingUserId = localStorage.getItem("airbnb_oauth_pending_user");
     if (!pendingUserId) return;
     localStorage.removeItem("airbnb_oauth_pending_user");
 
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let pollCount = 0;
+    const MAX_POLLS = 60; // 60 × 3 s = 3 minutes max
+
+    const startPolling = (dataSourceId: string) => {
+      toast({
+        title: "Waiting for Airbnb confirmation…",
+        description:
+          "Hospitable is verifying your connection. This may take a few seconds.",
+      });
+
+      pollInterval = setInterval(async () => {
+        pollCount += 1;
+        try {
+          const res = await fetch("/api/data-sources", { credentials: "include" });
+          if (!res.ok) return;
+          const sources: any[] = await res.json();
+          const source = sources.find(
+            (ds: any) => ds.id === dataSourceId,
+          );
+          if (source?.isConnected) {
+            clearInterval(pollInterval!);
+            await Promise.all([
+              refetch(),
+              queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] }),
+              queryClient.invalidateQueries({ queryKey: ["/api/properties/all"] }),
+              queryClient.invalidateQueries({ queryKey: ["/api/listings"] }),
+            ]);
+            toast({
+              title: "Airbnb Connected!",
+              description:
+                "Your Airbnb account is now connected. Navigating to properties…",
+            });
+            setTimeout(() => setLocation("/properties"), 1500);
+          } else if (pollCount >= MAX_POLLS) {
+            clearInterval(pollInterval!);
+            toast({
+              title: "Connection Pending",
+              description:
+                "We haven't received confirmation from Airbnb yet. Please check back in a moment.",
+              variant: "destructive",
+            });
+          }
+        } catch {
+          // network error — keep polling
+        }
+      }, 3000);
+    };
+
     connectHospitableService
       .activate(pendingUserId)
       .then(async (res) => {
-        if (res.ok) {
-          // Invalidate all relevant queries so properties appear immediately.
+        if (!res.ok) return;
+        const body = await res.json();
+        if (body.isConnected) {
+          // Webhook already fired before we returned — proceed immediately.
           await Promise.all([
             refetch(),
             queryClient.invalidateQueries({ queryKey: ["/api/data-sources"] }),
@@ -136,16 +188,19 @@ export default function ConnectDataSource() {
             description:
               "Your Airbnb account is now connected. Navigating to properties…",
           });
-          // Give the backend a moment to complete the background sync,
-          // then navigate to the properties page.
-          setTimeout(() => {
-            setLocation("/properties");
-          }, 1500);
+          setTimeout(() => setLocation("/properties"), 1500);
+        } else {
+          // Webhook hasn't fired yet — start polling.
+          startPolling(body.dataSourceId);
         }
       })
       .catch(() => {
-        // Non-fatal — the webhook may still fire
+        // Non-fatal — ignore
       });
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

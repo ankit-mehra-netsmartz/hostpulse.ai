@@ -16,6 +16,134 @@ import { z } from "zod";
 
 const isDevelopment = config.isDevelopment;
 
+// ---------------------------------------------------------------------------
+// Helper: fetch + merge properties from all connected data sources in parallel
+// ---------------------------------------------------------------------------
+async function loadMergedProperties(connectedSources: any[]): Promise<any[]> {
+  const hospSources = connectedSources.filter((ds) => ds.provider === "hospitable");
+  const airbnbSources = connectedSources.filter((ds) => ds.provider === "airbnb");
+
+  // Fetch both groups in parallel
+  const [hospResults, connectResults] = await Promise.all([
+    // Public API: one call per hospitable source
+    Promise.all(
+      hospSources.map(async (ds) => {
+        try {
+          const { data, error } = await fetchHospitableProperties(ds.id);
+          if (error || !data) {
+            logger.error("DataSources", `Error fetching public-API properties for ds ${ds.id}:`, error);
+            return [] as any[];
+          }
+          const props: any[] = (data as any)?.data || [];
+          return props.map((p: any) => ({
+            ...p,
+            _dataSourceId: ds.id,
+            _provider: "hospitable" as const,
+          }));
+        } catch (err) {
+          logger.error("DataSources", `Exception fetching public-API properties for ds ${ds.id}:`, err);
+          return [] as any[];
+        }
+      }),
+    ),
+    // Connect API: one call per airbnb source
+    Promise.all(
+      airbnbSources.map(async (ds) => {
+        if (!ds.externalCustomerId) return [] as any[];
+        try {
+          const listings = await hospitable_connect.getCustomerListings(ds.externalCustomerId);
+          return listings.map((listing: any) => ({
+            id: listing.id,
+            name: listing.public_name || listing.private_name || "Unnamed Listing",
+            public_name: listing.public_name || listing.private_name || "Unnamed Listing",
+            picture: listing.picture,
+            property_type: listing.property_type,
+            address: listing.address,
+            capacity: listing.capacity,
+            bedrooms: listing.bedrooms,
+            bathrooms: listing.bathrooms,
+            amenities: listing.amenities,
+            description: listing.description,
+            summary: listing.summary,
+            fees: listing.fees,
+            check_in: listing.check_in,
+            check_out: listing.check_out,
+            details: listing.details,
+            house_rules: listing.house_rules,
+            owner: {
+              name: listing.channel?.name || listing.channels?.[0]?.name || undefined,
+              email: listing.channel?.email || listing.channels?.[0]?.email || undefined,
+            },
+            listings: [{ platform: listing.platform || "airbnb", platform_id: listing.platform_id }],
+            _dataSourceId: ds.id,
+            _provider: "airbnb" as const,
+            _connects_id: listing.id,
+            _airbnb_listing_id: listing.platform_id,
+          }));
+        } catch (err) {
+          logger.error("DataSources", `Exception fetching Connect listings for ds ${ds.id}:`, err);
+          return [] as any[];
+        }
+      }),
+    ),
+  ]);
+
+  const allHosp: any[] = hospResults.flat();
+  const allConnect: any[] = connectResults.flat();
+
+  // Build dedup map keyed by "airbnb__<platform_id>" for Airbnb properties,
+  // or "public__<p.id>" for non-Airbnb Public API properties.
+  const mergedMap = new Map<string, any>();
+
+  // Process Public API properties first
+  for (const p of allHosp) {
+    const airbnbListing = Array.isArray(p.listings)
+      ? p.listings.find(
+          (l: any) =>
+            l.platform_id &&
+            typeof l.platform === "string" &&
+            l.platform.toLowerCase() === "airbnb",
+        )
+      : undefined;
+
+    if (airbnbListing) {
+      const key = "airbnb__" + String(airbnbListing.platform_id);
+      mergedMap.set(key, { ...p, _public_api_id: p.id, _sources: ["public_api"] });
+    } else {
+      // Non-Airbnb platform (Agoda, Booking.com, …) — no dedup needed
+      mergedMap.set("public__" + String(p.id), { ...p, _sources: ["public_api"] });
+    }
+  }
+
+  // Process Connect listings, merging where an Airbnb ID already exists
+  for (const p of allConnect) {
+    const platformId = p._airbnb_listing_id;
+    const key = "airbnb__" + String(platformId);
+
+    if (mergedMap.has(key)) {
+      // Duplicate — Connect fields take priority for these keys
+      const existing = mergedMap.get(key)!;
+      mergedMap.set(key, {
+        ...existing,
+        amenities: p.amenities ?? existing.amenities,
+        fees: p.fees ?? existing.fees,
+        check_in: p.check_in ?? existing.check_in,
+        check_out: p.check_out ?? existing.check_out,
+        details: p.details ?? existing.details,
+        house_rules: p.house_rules ?? existing.house_rules,
+        _public_api_id: existing._public_api_id,
+        _connects_id: p._connects_id,
+        _airbnb_listing_id: p._airbnb_listing_id,
+        _sources: ["public_api", "connects"],
+      });
+    } else {
+      mergedMap.set(key, { ...p, _sources: ["connects"] });
+    }
+  }
+
+  return Array.from(mergedMap.values());
+}
+
 const HOSPITABLE_CLIENT_ID =
   isDevelopment && config.hospitable.clientIdDev
     ? config.hospitable.clientIdDev
@@ -155,6 +283,22 @@ export function registerDataSourceRoutes(
 
       if (!dataSource || dataSource.userId !== userId) {
         return res.status(404).json({ message: "Data source not found" });
+      }
+
+      // For Airbnb (Hospitable Connect) data sources, delete the customer from
+      // Hospitable Connect first so the channel is fully revoked on their side.
+      if (dataSource.provider === "airbnb" && dataSource.externalCustomerId) {
+        try {
+          await hospitable_connect.deleteCustomer(dataSource.externalCustomerId);
+        } catch (err) {
+          // Log but don't block the local delete — the record should still be
+          // removed even if the remote call fails.
+          logger.error(
+            "DataSources",
+            `Failed to delete Hospitable Connect customer ${dataSource.externalCustomerId}:`,
+            err,
+          );
+        }
       }
 
       await storage.deleteDataSource(getParamId(req.params.id));
@@ -818,8 +962,11 @@ export function registerDataSourceRoutes(
     },
   );
 
-  // Called by the frontend after the user completes the Airbnb OAuth flow to
-  // mark the data source as connected and trigger an initial listing sync.
+  // Called by the frontend after the user returns from the Airbnb OAuth flow.
+  // We do NOT mark isConnected=true here — that happens only when Hospitable
+  // fires the "channel.activated" webhook (POST /api/webhooks/hospitable-connect).
+  // This endpoint simply confirms the data source record exists so the frontend
+  // can start polling for the webhook-driven status change.
   app.post(
     "/api/hospitable-connect/activate",
     isAuthenticated,
@@ -841,28 +988,28 @@ export function registerDataSourceRoutes(
             .json({ message: "Airbnb data source not found" });
         }
 
-        // Mark as connected immediately so the frontend can proceed.
-        await storage.updateDataSource(airbnbSource.id, {
-          isConnected: true,
-        });
         logger.info(
           "Connect",
-          `Activated Airbnb data source ${airbnbSource.id} for user ${userId}`,
+          `OAuth return acknowledged for Airbnb data source ${airbnbSource.id} — waiting for channel.activated webhook`,
         );
 
-        // Properties are NOT auto-imported here — the user selects and imports
-        // them manually from the Properties page, same as the Hospitable Public
-        // API flow (toggle to import).
-        res.json({ success: true, dataSourceId: airbnbSource.id });
+        // Return pending status. The frontend will poll /api/data-sources until
+        // isConnected becomes true (set by the channel.activated webhook).
+        res.json({
+          success: true,
+          dataSourceId: airbnbSource.id,
+          isConnected: airbnbSource.isConnected ?? false,
+          pending: !(airbnbSource.isConnected ?? false),
+        });
       } catch (error) {
         logger.error(
           "Connect",
-          "Error activating Airbnb data source:",
+          "Error in Airbnb OAuth return handler:",
           error,
         );
         res
           .status(500)
-          .json({ message: "Failed to activate Airbnb connection" });
+          .json({ message: "Failed to process Airbnb connection return" });
       }
     },
   );
@@ -1054,65 +1201,7 @@ export function registerDataSourceRoutes(
         return res.json({ data: [] });
       }
 
-      const allProperties: any[] = [];
-
-      for (const dataSource of connectedSources) {
-        try {
-          if (dataSource.provider === "airbnb") {
-            if (!dataSource.externalCustomerId) continue;
-            const connectListings = await hospitable_connect.getCustomerListings(
-              dataSource.externalCustomerId,
-            );
-            const mapped = connectListings.map((listing: any) => ({
-              id: listing.id,
-              name: listing.public_name || listing.private_name || "Unnamed Listing",
-              public_name: listing.public_name || listing.private_name || "Unnamed Listing",
-              picture: listing.picture,
-              property_type: listing.property_type,
-              address: listing.address,
-              capacity: listing.capacity,
-              bedrooms: listing.bedrooms,
-              bathrooms: listing.bathrooms,
-              amenities: listing.amenities,
-              description: listing.description,
-              summary: listing.summary,
-              owner: {
-                name: listing.channel?.name || listing.channels?.[0]?.name || undefined,
-                email: listing.channel?.email || listing.channels?.[0]?.email || undefined,
-              },
-              listings: [{ platform: listing.platform || "airbnb", platform_id: listing.platform_id }],
-              // Attach source metadata so client knows which data source to import through
-              _dataSourceId: dataSource.id,
-              _provider: dataSource.provider,
-            }));
-            allProperties.push(...mapped);
-          } else if (dataSource.provider === "hospitable") {
-            const { data, error } = await fetchHospitableProperties(dataSource.id);
-            if (error || !data) {
-              logger.error(
-                "DataSources",
-                `Error fetching properties for data source ${dataSource.id}:`,
-                error,
-              );
-              continue;
-            }
-            const props: any[] = (data as any)?.data || [];
-            const mapped = props.map((p: any) => ({
-              ...p,
-              _dataSourceId: dataSource.id,
-              _provider: dataSource.provider,
-            }));
-            allProperties.push(...mapped);
-          }
-        } catch (err) {
-          logger.error(
-            "DataSources",
-            `Error fetching properties for data source ${dataSource.id}:`,
-            err,
-          );
-        }
-      }
-
+      const allProperties = await loadMergedProperties(connectedSources);
       res.json({ data: allProperties });
     } catch (error) {
       logger.error("DataSources", "Error fetching all properties:", error);

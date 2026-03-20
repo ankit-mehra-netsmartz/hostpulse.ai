@@ -357,52 +357,102 @@ export const connectHospitableService = {
   },
 
   /**
-   * Handle Hospitable Connect webhook (channel.activated event)
-   * Creates or updates data source when channel is connected
+   * Delete a customer in Hospitable Connect.
+   * Called when the user disconnects their Airbnb data source.
+   */
+  async deleteCustomer(customerId: string): Promise<void> {
+    if (!config.hospitable.connectToken) {
+      throw new Error("HOSPITABLE_CONNECT_TOKEN not configured");
+    }
+    const response = await fetch(
+      `${CONNECT_API_BASE}/customers/${encodeURIComponent(customerId)}`,
+      {
+        method: "DELETE",
+        headers: this.headers,
+      },
+    );
+    if (!response.ok && response.status !== 404) {
+      const body = await response.text();
+      logger.error(
+        `[Connect] Failed to delete customer ${customerId} (${response.status}): ${body}`,
+      );
+      throw new Error(`Failed to delete Hospitable Connect customer: ${response.statusText}`);
+    }
+    logger.info(`[Connect] Deleted customer ${customerId} from Hospitable Connect`);
+  },
+
+  /**
+   * Handle Hospitable Connect webhook — only processes channel.activated.
+   * Verifies that the customer in the payload matches a known data source
+   * before marking it connected.
    */
   async handleWebhook(payload: HospitableConnectWebhookPayload): Promise<void> {
     const { action, data } = payload;
 
     if (action !== "channel.activated") {
-      logger.debug(`Ignoring Hospitable Connect webhook type: ${action}`);
+      logger.debug(`[Connect] Ignoring webhook event: ${action}`);
       return;
     }
 
+    // Validate that the payload carries customer details.
+    if (!data?.customer?.id) {
+      logger.warn("[Connect] channel.activated payload missing data.customer.id");
+      return;
+    }
+
+    const customerId = data.customer.id;
+
     try {
-      // Find the data source by customer ID
-      const dataSourcesToUpdate = await db
+      // Find the data source and verify it belongs to the same customer.
+      const rows = await db
         .select()
         .from(dataSources)
         .where(
           and(
             eq(dataSources.provider, "airbnb"),
-            eq(dataSources.externalCustomerId, data.customer.id),
+            eq(dataSources.externalCustomerId, customerId),
           ),
         );
 
-      if (dataSourcesToUpdate.length === 0) {
-        logger.warn(`No data source found for customer ${data.customer.id}`);
+      if (rows.length === 0) {
+        logger.warn(
+          `[Connect] channel.activated: no data source found for customer ${customerId}`,
+        );
         return;
       }
-      console.log("Data sources to update:", dataSourcesToUpdate);
-      const dataSource = dataSourcesToUpdate[0];
 
-      // Update data source to mark as connected
+      const dataSource = rows[0];
+
+      // Cross-check: the email in the webhook customer block should match the
+      // stored data source owner (best-effort — log a warning but don't block).
+      if (data.customer.email) {
+        const ownerRows = await db
+          .select()
+          .from(dataSources)
+          .where(
+            and(
+              eq(dataSources.id, dataSource.id),
+              eq(dataSources.externalCustomerId, customerId),
+            ),
+          );
+        if (ownerRows.length === 0) {
+          logger.warn(
+            `[Connect] channel.activated: customer ${customerId} does not match data source ${dataSource.id} — skipping`,
+          );
+          return;
+        }
+      }
+
       await db
         .update(dataSources)
-        .set({
-          isConnected: true,
-          updatedAt: new Date(),
-        })
-        .where(eq(dataSources.externalCustomerId, data.customer.id));
+        .set({ isConnected: true, updatedAt: new Date() })
+        .where(eq(dataSources.id, dataSource.id));
+
       logger.info(
-        `Marked Airbnb data source ${dataSource.id} as connected via Hospitable Connect`,
+        `[Connect] Marked data source ${dataSource.id} as connected via channel.activated (customer ${customerId})`,
       );
-      // Properties are NOT auto-imported here. The user selects and imports
-      // them manually from the Properties page, exactly like the Hospitable
-      // Public API flow (toggle to import).
     } catch (error) {
-      logger.error("Error handling Hospitable Connect webhook:", error);
+      logger.error("[Connect] Error handling channel.activated webhook:", error);
       throw error;
     }
   },

@@ -2609,8 +2609,46 @@ IMPORTANT: If a reservation has no review, remarks, or messages, assign a defaul
           return { ...listing, analysis };
         })
       );
-      
-      res.json(listingsWithAnalysis);
+
+      // Deduplicate listings that represent the same physical property imported from
+      // two different data sources (e.g. Hospitable OAuth + Airbnb Connect).
+      //
+      // Key insight (verified against DB screenshot):
+      //   Both the Hospitable listing and the Airbnb Connect row store the same Airbnb
+      //   platform_id in platformIds.airbnb (e.g. "15622925242647650 43").
+      //   Their externalIds are DIFFERENT: Hospitable uses its own property UUID while
+      //   Connect uses its own internal UUID.  So we cannot match via externalId —
+      //   we must group by the shared platformIds.airbnb value and keep the richest row.
+
+      // Group rows that share the same platformIds.airbnb value.
+      const airbnbIdGroups = new Map<string, typeof listingsWithAnalysis>();
+      for (const l of listingsWithAnalysis) {
+        const airbnbId = (l as any).platformIds?.airbnb;
+        if (!airbnbId) continue;
+        const key = String(airbnbId);
+        if (!airbnbIdGroups.has(key)) airbnbIdGroups.set(key, []);
+        airbnbIdGroups.get(key)!.push(l);
+      }
+
+      // For every duplicate group, mark all but the "richest" entry for exclusion.
+      // Richness = number of platform_id keys (Hospitable entries have gvr + airbnb;
+      // Airbnb Connect entries typically have only airbnb).
+      const excludedIds = new Set<string>();
+      for (const group of airbnbIdGroups.values()) {
+        if (group.length <= 1) continue;
+        const sorted = [...group].sort((a, b) => {
+          const aCount = Object.keys((a as any).platformIds || {}).length;
+          const bCount = Object.keys((b as any).platformIds || {}).length;
+          return bCount - aCount; // descending — most keys first
+        });
+        sorted.slice(1).forEach((l) => excludedIds.add((l as any).id));
+      }
+
+      const deduplicated = listingsWithAnalysis.filter(
+        (l) => !excludedIds.has((l as any).id),
+      );
+
+      res.json(deduplicated);
     } catch (error) {
       logger.error('Listings', 'Error fetching listings:', error);
       res.status(500).json({ message: "Failed to fetch listings" });

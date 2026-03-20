@@ -78,6 +78,46 @@ interface PropertyWithSelection extends HospitableProperty {
   isSelected: boolean;
 }
 
+// Platform badge config — label + colour classes
+const PLATFORM_STYLES: Record<string, { label: string; className: string }> = {
+  hospitable: { label: "Hospitable", className: "bg-teal-500/15 text-teal-400 border-teal-500/30" },
+  airbnb:     { label: "Airbnb",     className: "bg-rose-500/15  text-rose-400  border-rose-500/30"  },
+  vrbo:       { label: "VRBO",       className: "bg-blue-500/15  text-blue-400  border-blue-500/30"  },
+  bookingCom: { label: "Booking.com",className: "bg-indigo-500/15 text-indigo-400 border-indigo-500/30" },
+};
+
+/**
+ * Returns the list of platform keys this property covers.
+ * For a DB listing: uses platformIds (e.g. { airbnb: "123" }) + the managing provider.
+ * For a live API property: uses the _provider and its listings[] array.
+ */
+function getPropertyPlatforms(
+  property: HospitableProperty & { _provider?: string; _isFromDatabase?: boolean },
+  existingListing?: import("@shared/schema").Listing | null,
+): string[] {
+  const platforms = new Set<string>();
+
+  if (existingListing) {
+    // Managed through Hospitable Public API — it is the primary record
+    platforms.add("hospitable");
+    const pids = existingListing.platformIds as Record<string, string | undefined> | null | undefined;
+    if (pids?.airbnb) platforms.add("airbnb");
+    if (pids?.vrbo) platforms.add("vrbo");
+    if (pids?.bookingCom) platforms.add("bookingCom");
+  } else {
+    const p = property as HospitableProperty & { _provider?: string };
+    if (p._provider) platforms.add(p._provider);
+    // Also surface platform coverage from the listings[] array
+    p.listings?.forEach((l) => {
+      if (l.platform === "airbnb") platforms.add("airbnb");
+      else if (l.platform === "vrbo") platforms.add("vrbo");
+      else if (l.platform === "booking.com") platforms.add("bookingCom");
+    });
+  }
+
+  return Array.from(platforms);
+}
+
 export default function PropertySelection() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -1229,6 +1269,43 @@ export default function PropertySelection() {
                                     </Badge>
                                   )}
                                 </div>
+                                {/* Platform source badges */}
+                                {(() => {
+                                  const platforms = getPropertyPlatforms(
+                                    property as HospitableProperty & { _provider?: string; _isFromDatabase?: boolean },
+                                    existingListing,
+                                  );
+                                  if (platforms.length === 0) return null;
+                                  const tooltipText =
+                                    platforms.length > 1
+                                      ? `Managed via ${PLATFORM_STYLES[platforms[0]]?.label ?? platforms[0]} · also listed on ${platforms.slice(1).map((k) => PLATFORM_STYLES[k]?.label ?? k).join(", ")} · duplicate removed`
+                                      : `Connected via ${PLATFORM_STYLES[platforms[0]]?.label ?? platforms[0]}`;
+                                  return (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-1 mt-0.5 cursor-default">
+                                          {platforms.map((key) => {
+                                            const style = PLATFORM_STYLES[key] ?? {
+                                              label: key,
+                                              className: "bg-muted text-muted-foreground border-border",
+                                            };
+                                            return (
+                                              <span
+                                                key={key}
+                                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${style.className}`}
+                                              >
+                                                {style.label}
+                                              </span>
+                                            );
+                                          })}
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="bottom" className="max-w-xs text-xs">
+                                        {tooltipText}
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  );
+                                })()}
                                 {property.headline && (
                                   <p className="text-xs text-muted-foreground truncate max-w-xs">
                                     {property.headline}

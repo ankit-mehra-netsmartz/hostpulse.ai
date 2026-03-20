@@ -1570,7 +1570,7 @@ Respond in JSON format:
       //   return res.status(401).json({ message: "Invalid signature" });
       // }
 
-      // Handle different webhook events
+      // Only channel.activated is handled — all other events are ignored.
       if (eventType === "channel.activated") {
         await hospitable_connect.handleWebhook(req.body);
         logger.info(
