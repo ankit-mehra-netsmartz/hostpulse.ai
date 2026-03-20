@@ -213,10 +213,10 @@ class AuthStorage implements IAuthStorage {
       return { success: false, reason: "expired" as const };
     }
 
-    // Mark email as verified
+    // Mark email as verified and update last login timestamp
     await db
       .update(users)
-      .set({ emailVerified: true, updatedAt: new Date() })
+      .set({ emailVerified: true, lastLoginAt: new Date(), updatedAt: new Date() })
       .where(eq(users.id, row.userId));
 
     // Consume token (one-time use)
