@@ -216,7 +216,7 @@ class AuthStorage implements IAuthStorage {
     // Mark email as verified and update last login timestamp
     await db
       .update(users)
-      .set({ emailVerified: true, lastLoginAt: new Date(), updatedAt: new Date() })
+      .set({ emailVerified: true, lastLoginAt: new Date() })
       .where(eq(users.id, row.userId));
 
     // Consume token (one-time use)
